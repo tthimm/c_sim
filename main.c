@@ -10,12 +10,13 @@
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
-#define BLOCK_SIZE 50
+#define BLOCK_SIZE 20
 #define AIR 0
 #define DIRT_BLOCK 1
 #define WATER 2
 
-int map_width, map_height = 0;
+int map_width = 0;
+int map_height = 0;
 int **tileset;
 
 /* load map file and fill tiles array */
@@ -23,14 +24,14 @@ void load_map(void) {
 	int i = 0;
 	int j = 0;
 	int k = 0;
-	int  c;
+	int c;
 	int nRet;
 	FILE *map;
 	size_t *t = malloc(0);
 	char **gptr = (char **)malloc(sizeof(char*));
 	*gptr = NULL;
 
-
+	/* open mapfile */
 	map = fopen("media/maps/world.map", "r");
 	if(NULL == map) {
 		printf("couldn't load map file\n");
@@ -66,6 +67,7 @@ void load_map(void) {
 
 	/* fill tileset array with values from mapfile */
 	while( (c = fgetc(map)) != EOF ) {
+		/* if newline */
 		if(c == 10) {
 			j++;
 			i = 0;
@@ -89,10 +91,11 @@ void load_map(void) {
 }
 
 /* blocks are solid */
-/* TODO: replace SCREEN_WIDTH & SCREEN_HEIGHT by map row/column */
 int solid(int x, int y) {
-	if( (y < 0) | (x < 0) | (y >= map_height * 50) | (x >= map_width * 50) |
-			((tileset[x/50][y/50] != AIR) & (tileset[x/50][y/50] != WATER)) ) {
+	int new_x = x / BLOCK_SIZE;
+	int new_y = y / BLOCK_SIZE;
+	if( (y < 0) | (x < 0) | (y >= map_height * BLOCK_SIZE) | (x >= map_width * BLOCK_SIZE) |
+			((tileset[new_x][new_y] != AIR) & (tileset[new_x][new_y] != WATER)) ) {
 		return 1;
 	}
 	else {
