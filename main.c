@@ -17,7 +17,7 @@
 
 int map_width = 0;
 int map_height = 0;
-int **tileset;
+int **tiles;
 
 /* load map file and fill tiles array */
 void load_map(void) {
@@ -49,14 +49,14 @@ void load_map(void) {
 	free(t);
 
 	/* allocate memory for tileset array */
-	tileset = (int **)malloc(map_width * sizeof(int *));
-	if(NULL == tileset) {
+	tiles = (int **)malloc(map_width * sizeof(int *));
+	if(NULL == tiles) {
 		printf("not enough free ram");
 		exit(EXIT_FAILURE);
 	}
 	for(k = 0; k < map_width; k++) {
-		tileset[k] = (int *)malloc(map_height * sizeof(int));
-		if(NULL == tileset[k]) {
+		tiles[k] = (int *)malloc(map_height * sizeof(int));
+		if(NULL == tiles[k]) {
 			printf("not enough free ram for row: %d\n", k);
 			exit(EXIT_FAILURE);
 		}
@@ -65,7 +65,7 @@ void load_map(void) {
 	/* set position to begin of stream */
 	rewind(map);
 
-	/* fill tileset array with values from mapfile */
+	/* fill tiles array with values from mapfile */
 	while( (c = fgetc(map)) != EOF ) {
 		/* if newline */
 		if(c == 10) {
@@ -84,7 +84,7 @@ void load_map(void) {
 					c = AIR;
 					break;
 			}
-			tileset[i++][j] = c;
+			tiles[i++][j] = c;
 		}
 	}
 	fclose(map);
@@ -95,7 +95,7 @@ int solid(int x, int y) {
 	int new_x = x / BLOCK_SIZE;
 	int new_y = y / BLOCK_SIZE;
 	if( (y < 0) | (x < 0) | (y >= map_height * BLOCK_SIZE) | (x >= map_width * BLOCK_SIZE) |
-			((tileset[new_x][new_y] != AIR) & (tileset[new_x][new_y] != WATER)) ) {
+			((tiles[new_x][new_y] != AIR) & (tiles[new_x][new_y] != WATER)) ) {
 		return 1;
 	}
 	else {
@@ -154,7 +154,7 @@ int main(void) {
 	/* srand(time(NULL)); */
 	for(i = 0; i < map_width; i++) {
 		for(j = 0; j < map_height; j++) {
-			block = tileset[i][j];
+			block = tiles[i][j];
 
 			/*block = rand() % 2;*/
 			/* print random generated numbers */
@@ -186,9 +186,9 @@ int main(void) {
 		SDL_Delay(1000/60);
 	}
 	for(i = 0; i < map_height; i++) {
-		free(tileset[i]);
+		free(tiles[i]);
 	}
-	free(tileset);
+	free(tiles);
 	return 0;
 }
 
