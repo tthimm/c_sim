@@ -1,23 +1,30 @@
+/* TODO: camera and translate blocks (see libgosu)
+ * TODO: player controls
+ * TODO: flowing water (see http://w-shadow.com/blog/2009/09/01/simple-fluid-simulation/)
+ * TODO: add inventory
+ * TODO: add hud
+ * TODO: add minerals
+ * TODO: add liquids (oil, lava)
+ * TODO: add tools
+*/
 #ifndef _GNU_SOURCE
 	#define _GNU_SOURCE
 #endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include "SDL/SDL.h"
+#include <SDL/SDL.h>
 #include "SDL/SDL_image.h"
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
 #define BLOCK_SIZE 20
-#define AIR 0
-#define DIRT_BLOCK 1
-#define WATER 2
+enum blocks { AIR, DIRT, GRASS, SAND, STONE, WATER1, WATER2, WATER3, WATER4, WATER5 };
 
 int map_width = 0;
 int map_height = 0;
 int **tiles;
+SDL_Surface *temp, *tileset, *player_sf;
 
 /* load map file and fill tiles array */
 void load_map(void) {
@@ -74,15 +81,16 @@ void load_map(void) {
 		}
 		else {
 			switch(c) {
-				case '#':
-					c = DIRT_BLOCK;
-					break;
-				case '~':
-					c = WATER;
-					break;
-				default:
-					c = AIR;
-					break;
+				case '#':	c = DIRT;		break;
+				case 'G':	c = GRASS;		break;
+				case 'S':	c = SAND;		break;
+				case 'R':	c = STONE;		break;
+				case '1':	c = WATER1;		break;
+				case '2':	c = WATER2;		break;
+				case '3':	c = WATER3;		break;
+				case '4':	c = WATER4;		break;
+				case '5':	c = WATER5;		break;
+				default:	c = AIR;		break;
 			}
 			tiles[i++][j] = c;
 		}
@@ -95,7 +103,7 @@ int solid(int x, int y) {
 	int new_x = x / BLOCK_SIZE;
 	int new_y = y / BLOCK_SIZE;
 	if( (y < 0) | (x < 0) | (y >= map_height * BLOCK_SIZE) | (x >= map_width * BLOCK_SIZE) |
-			((tiles[new_x][new_y] != AIR) & (tiles[new_x][new_y] != WATER)) ) {
+			((tiles[new_x][new_y] != AIR) & (tiles[new_x][new_y] < WATER1)) ) {
 		return 1;
 	}
 	else {
@@ -103,6 +111,7 @@ int solid(int x, int y) {
 	}
 }
 
+/* set background color */
 void set_bg_color(SDL_Surface *scr) {
 	SDL_Rect dst;
 	dst.x = 0;
@@ -112,68 +121,110 @@ void set_bg_color(SDL_Surface *scr) {
 	SDL_FillRect(scr, &dst, SDL_MapRGB(scr->format, 47, 136, 248));
 }
 
-void create_dirt_block(SDL_Surface *scr, int x, int y) {
-	SDL_Rect dstt;
-	dstt.x = x;
-	dstt.y = y;
-	dstt.w = BLOCK_SIZE;
-	dstt.h = BLOCK_SIZE;
-	SDL_FillRect(scr, &dstt, SDL_MapRGB(scr->format, 107, 73, 14));
-	SDL_UpdateRect(scr, x, y, BLOCK_SIZE, BLOCK_SIZE);
+void load_tileset(void) {
+	temp = IMG_Load("media/images/tileset20.png");
+	SDL_SetColorKey(temp, SDL_SRCCOLORKEY, SDL_MapRGB(temp->format, 255, 0, 0));
+	tileset = SDL_DisplayFormat(temp);
+	if(NULL == tileset) {
+		printf("Can't load tileset: %s", SDL_GetError());
+		exit(EXIT_FAILURE);
+	}
+	SDL_FreeSurface(temp);
+}
+
+void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
+	SDL_Rect src, dst;
+	SDL_SetAlpha(tileset, SDL_SRCALPHA, 170);
+	src.x = tile_x;
+	src.y = 0;
+	src.w = BLOCK_SIZE;
+	src.h = BLOCK_SIZE;
+
+	dst.x = x;
+	dst.y = y;
+	dst.w = BLOCK_SIZE;
+	dst.h = BLOCK_SIZE;
+	SDL_BlitSurface(tileset, &src, screen, &dst);
+}
+
+void draw_all_tiles(SDL_Surface *screen) {
+	int i, j, tileset_index;
+	for(i = 0; i < map_width; i++) {
+		for(j = 0; j < map_height; j++) {
+			tileset_index = tiles[i][j] - 1;
+
+			/* tileset_index == -1 means AIR tile... don't draw */
+			if(tileset_index != -1) {
+				draw_tile(screen, i*BLOCK_SIZE, j*BLOCK_SIZE, tileset_index * BLOCK_SIZE);
+			}
+		}
+	}
+}
+
+struct player {
+	int x;
+	int y;
+	int vx;
+	int vy;
+} p = { 0, 0, 0, 0};
+
+void load_player_image(void) {
+	temp = IMG_Load("media/images/player.png");
+	SDL_SetColorKey(temp, SDL_SRCCOLORKEY | SDL_RLEACCEL, (Uint16) SDL_MapRGB(temp->format, 255, 0, 0));
+	player_sf = SDL_DisplayFormat(temp);
+	if(NULL == tileset) {
+		printf("Can't load player: %s", SDL_GetError());
+		exit(EXIT_FAILURE);
+	}
+	SDL_FreeSurface(temp);
+}
+
+void draw_player(SDL_Surface *screen, struct player *p) {
+	SDL_Rect src, dst;
+	src.x = 0;
+	src.y = 0;
+	src.w = 25;
+	src.h = 45;
+
+	dst.x = p->x;
+	dst.y = p->y;
+	dst.w = 25;
+	dst.h = 45;
+	SDL_BlitSurface(player_sf, &src, screen, &dst);
 }
 
 int main(void) {
-	int i, j, k;
-	char block;
 	SDL_Surface *screen;
 	SDL_Event event;
-	int done = 0;
-	load_map();
-/*	printf("%c solid? => %i\n", tiles[MAP_WIDTH-1][MAP_HEIGHT-1], solid(MAP_WIDTH-1, MAP_HEIGHT-1));
-	printf("%c solid? => %i\n", tiles[0][0], solid(0, 0)); */
-
+	int i, done = 0;
 
 	if(SDL_Init(SDL_INIT_VIDEO) == -1) {
 		printf("Can't initialize SDL: %s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
 	}
 	atexit(SDL_Quit);
-	screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_HWSURFACE);
-	if(screen == NULL) {
+	screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_DOUBLEBUF);
+	if(NULL == screen) {
 		printf("Can't set video mode: %s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
 	}
-/*	image = IMG_Load("media/images/dirt.png");
-	if(image == NULL) {
-		printf("Can't load dirt image: %s", SDL_GetError());
-		exit(EXIT_FAILURE);
-	}*/
+
+	/* load the map and fill tiles array */
+	load_map();
 
 	/* set bg color */
 	set_bg_color(screen);
-	/* srand(time(NULL)); */
-	for(i = 0; i < map_width; i++) {
-		for(j = 0; j < map_height; j++) {
-			block = tiles[i][j];
 
-			/*block = rand() % 2;*/
-			/* print random generated numbers */
-			/* printf("%i ", block); */
-			if(block == 1) {
-				create_dirt_block(screen, i*BLOCK_SIZE, j*BLOCK_SIZE);
-			}
-		}
-	}
+	/* load tileset */
+	load_tileset();
 
-/*	SDL_BlitSurface(image, NULL, screen, NULL);
-	SDL_FreeSurface(image); */
-	SDL_UpdateRect(screen, 0, 0, 0, 0);
+	/* load player */
+	load_player_image();
+
+	/* game loop */
 	while(!done) {
 		while(SDL_PollEvent(&event)) {
 			switch(event.type) {
-			case SDL_QUIT:
-				done = 1;
-				break;
 			case SDL_KEYDOWN:
 				switch(event.key.keysym.sym) {
 					case SDLK_ESCAPE:
@@ -183,12 +234,24 @@ int main(void) {
 				break;
 			}
 		}
+
+		/* draw the player first, for Z-Order */
+		draw_player(screen, &p);
+
+		/* draw the tiles */
+		draw_all_tiles(screen);
+
+		SDL_Flip(screen);
 		SDL_Delay(1000/60);
 	}
+
+	/* free tiles array in reverse order */
 	for(i = 0; i < map_height; i++) {
 		free(tiles[i]);
 	}
 	free(tiles);
+
+	SDL_FreeSurface(tileset);
+	SDL_FreeSurface(player_sf);
 	return 0;
 }
-
