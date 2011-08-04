@@ -98,12 +98,13 @@ void load_map(void) {
 	fclose(map);
 }
 
-/* blocks are solid */
+/* blocks are solid, water and air aren't */
 int solid(int x, int y) {
-	int new_x = x / BLOCK_SIZE;
-	int new_y = y / BLOCK_SIZE;
+	int dx = x/BLOCK_SIZE;
+	int dy = y/BLOCK_SIZE;
+	int tile = tiles[dx][dy];
 	if( (y < 0) | (x < 0) | (y >= map_height * BLOCK_SIZE) | (x >= map_width * BLOCK_SIZE) |
-			((tiles[new_x][new_y] != AIR) & (tiles[new_x][new_y] < WATER1)) ) {
+			((tile != AIR) & (tile < WATER1)) | ((tile != AIR) & (tile > WATER5))) {
 		return 1;
 	}
 	else {
@@ -124,6 +125,7 @@ void set_bg_color(SDL_Surface *scr) {
 void load_tileset(void) {
 	temp = IMG_Load("media/images/tileset20.png");
 	SDL_SetColorKey(temp, SDL_SRCCOLORKEY, SDL_MapRGB(temp->format, 255, 0, 0));
+	/*SDL_SetAlpha(tileset, SDL_SRCALPHA, 170);*/
 	tileset = SDL_DisplayFormat(temp);
 	if(NULL == tileset) {
 		printf("Can't load tileset: %s", SDL_GetError());
@@ -134,7 +136,6 @@ void load_tileset(void) {
 
 void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
 	SDL_Rect src, dst;
-	SDL_SetAlpha(tileset, SDL_SRCALPHA, 170);
 	src.x = tile_x;
 	src.y = 0;
 	src.w = BLOCK_SIZE;
@@ -153,7 +154,9 @@ void draw_all_tiles(SDL_Surface *screen) {
 		for(j = 0; j < map_height; j++) {
 			tileset_index = tiles[i][j] - 1;
 
-			/* tileset_index == -1 means AIR tile... don't draw */
+			/* tileset_index == -1 means AIR tile... don't draw
+			 * but how do we update a tile if it gets deleted? dirt into air needs a new empty surface?
+			*/
 			if(tileset_index != -1) {
 				draw_tile(screen, i*BLOCK_SIZE, j*BLOCK_SIZE, tileset_index * BLOCK_SIZE);
 			}
@@ -193,6 +196,39 @@ void draw_player(SDL_Surface *screen, struct player *p) {
 	SDL_BlitSurface(player_sf, &src, screen, &dst);
 }
 
+void remove_block(SDL_Surface *scr, int x, int y) {
+	SDL_Rect rect;
+	int dx = x/BLOCK_SIZE;
+	int dy = y/BLOCK_SIZE;
+	int tile = tiles[dx][dy];
+
+	/* if tile is not air and not water */
+	if((tile != AIR) & ((tile < WATER1) | (tile > WATER5))) {
+		tiles[dx][dy] = AIR;
+
+		/* dirty rect */
+		rect.x = dx*BLOCK_SIZE; /* don't use x here. we need rounded values */
+		rect.y = dy*BLOCK_SIZE;
+		rect.w = BLOCK_SIZE;
+		rect.h = BLOCK_SIZE;
+
+		/* draw dirty rect over old block */
+		SDL_FillRect(scr, &rect, SDL_MapRGB(scr->format, 47, 136, 248));
+	}
+}
+
+void add_block(SDL_Surface *scr, int x, int y) {
+	int dx = x/BLOCK_SIZE;
+	int dy = y/BLOCK_SIZE;
+	int tile = tiles[dx][dy];
+
+	/* if tile is air or any water block */
+	if((tile == AIR) | ((tile >= WATER1) & (tile <= WATER5))) {
+		tiles[dx][dy] = DIRT;
+	}
+
+}
+
 int main(void) {
 	SDL_Surface *screen;
 	SDL_Event event;
@@ -203,7 +239,7 @@ int main(void) {
 		exit(EXIT_FAILURE);
 	}
 	atexit(SDL_Quit);
-	screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_DOUBLEBUF);
+	screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
 	if(NULL == screen) {
 		printf("Can't set video mode: %s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
@@ -225,13 +261,23 @@ int main(void) {
 	while(!done) {
 		while(SDL_PollEvent(&event)) {
 			switch(event.type) {
-			case SDL_KEYDOWN:
-				switch(event.key.keysym.sym) {
-					case SDLK_ESCAPE:
-						done = 1;
-						break;
-				}
-				break;
+				case SDL_MOUSEBUTTONDOWN:
+					switch(event.button.button) {
+						case 1:
+							remove_block(screen, event.button.x, event.button.y);
+							break;
+						case 3:
+							add_block(screen, event.button.x, event.button.y);
+							break;
+					}
+					break;
+				case SDL_KEYDOWN:
+					switch(event.key.keysym.sym) {
+						case SDLK_ESCAPE:
+							done = 1;
+							break;
+					}
+					break;
 			}
 		}
 
