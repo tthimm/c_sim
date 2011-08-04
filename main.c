@@ -19,12 +19,15 @@
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
 #define BLOCK_SIZE 20
+//             -1   0     20     40    60     80      100     120     140     160
 enum blocks { AIR, DIRT, GRASS, SAND, STONE, WATER1, WATER2, WATER3, WATER4, WATER5 };
 
 int map_width = 0;
 int map_height = 0;
 int **tiles;
-SDL_Surface *temp, *tileset, *player_sf;
+SDL_Surface *temp, *tileset, *player_sf, *cursor;
+int mouse_x = 0;
+int mouse_y = 0;
 
 /* load map file and fill tiles array */
 void load_map(void) {
@@ -134,7 +137,18 @@ void load_tileset(void) {
 	SDL_FreeSurface(temp);
 }
 
-void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
+/* draw background for deleted and transparent tiles */
+void draw_dirty_rect(SDL_Surface *screen, int x, int y) {
+	SDL_Rect dirty_rect;
+	dirty_rect.x = (x/BLOCK_SIZE)*BLOCK_SIZE;
+	dirty_rect.y = (y/BLOCK_SIZE)*BLOCK_SIZE;
+	dirty_rect.w = BLOCK_SIZE;
+	dirty_rect.h = BLOCK_SIZE;
+	SDL_FillRect(screen, &dirty_rect, SDL_MapRGB(screen->format, 47, 136, 248));
+}
+
+/* draw the tile */
+void really_draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
 	SDL_Rect src, dst;
 	src.x = tile_x;
 	src.y = 0;
@@ -148,18 +162,30 @@ void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
 	SDL_BlitSurface(tileset, &src, screen, &dst);
 }
 
+/* sometimes we can draw directly and sometimes we must draw the dirty rect first */
+void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
+	// AIR tile
+	if(tile_x == -20) {
+		draw_dirty_rect(screen, x, y);
+	}
+	// transparent WATER tiles
+	else if((tile_x >= 80) & (tile_x <= 140)) {
+		draw_dirty_rect(screen, x, y);
+		really_draw_tile(screen, x, y, tile_x);
+	}
+	// any other tiles
+	else {
+		really_draw_tile(screen, x, y, tile_x);
+	}
+}
+
+/* iterate through tiles array and draw tiles */
 void draw_all_tiles(SDL_Surface *screen) {
 	int i, j, tileset_index;
 	for(i = 0; i < map_width; i++) {
 		for(j = 0; j < map_height; j++) {
 			tileset_index = tiles[i][j] - 1;
-
-			/* tileset_index == -1 means AIR tile... don't draw
-			 * but how do we update a tile if it gets deleted? dirt into air needs a new empty surface?
-			*/
-			if(tileset_index != -1) {
-				draw_tile(screen, i*BLOCK_SIZE, j*BLOCK_SIZE, tileset_index * BLOCK_SIZE);
-			}
+			draw_tile(screen, i*BLOCK_SIZE, j*BLOCK_SIZE, tileset_index * BLOCK_SIZE);
 		}
 	}
 }
@@ -196,7 +222,8 @@ void draw_player(SDL_Surface *screen, struct player *p) {
 	SDL_BlitSurface(player_sf, &src, screen, &dst);
 }
 
-void remove_block(SDL_Surface *scr, int x, int y) {
+/* destroy block */
+void destroy_block(SDL_Surface *scr, int x, int y) {
 	SDL_Rect rect;
 	int dx = x/BLOCK_SIZE;
 	int dy = y/BLOCK_SIZE;
@@ -217,7 +244,8 @@ void remove_block(SDL_Surface *scr, int x, int y) {
 	}
 }
 
-void add_block(SDL_Surface *scr, int x, int y) {
+/* place block if there is enough room */
+void place_block(SDL_Surface *scr, int x, int y) {
 	int dx = x/BLOCK_SIZE;
 	int dy = y/BLOCK_SIZE;
 	int tile = tiles[dx][dy];
@@ -227,6 +255,32 @@ void add_block(SDL_Surface *scr, int x, int y) {
 		tiles[dx][dy] = DIRT;
 	}
 
+}
+
+void load_cursor(void) {
+	temp = IMG_Load("media/images/cursor20.png");
+	SDL_SetColorKey(temp, SDL_SRCCOLORKEY, SDL_MapRGB(temp->format, 255, 0, 0));
+	SDL_SetAlpha(temp, SDL_SRCALPHA, 100);
+	cursor = SDL_DisplayFormat(temp);
+	if(NULL == cursor) {
+		printf("Can't load cursor: %s", SDL_GetError());
+		exit(EXIT_FAILURE);
+	}
+	SDL_FreeSurface(temp);
+}
+
+void draw_cursor(SDL_Surface *screen, int x, int y) {
+	SDL_Rect src, dst;
+	src.x = 0;
+	src.y = 0;
+	src.w = BLOCK_SIZE;
+	src.h = BLOCK_SIZE;
+
+	dst.x = (x/BLOCK_SIZE)*BLOCK_SIZE;
+	dst.y = (y/BLOCK_SIZE)*BLOCK_SIZE;
+	dst.w = BLOCK_SIZE;
+	dst.h = BLOCK_SIZE;
+	SDL_BlitSurface(cursor, &src, screen, &dst);
 }
 
 int main(void) {
@@ -245,6 +299,12 @@ int main(void) {
 		exit(EXIT_FAILURE);
 	}
 
+	/* disable cursor */
+	SDL_ShowCursor(SDL_DISABLE);
+
+	/* load new cursor */
+	load_cursor();
+
 	/* load the map and fill tiles array */
 	load_map();
 
@@ -261,13 +321,17 @@ int main(void) {
 	while(!done) {
 		while(SDL_PollEvent(&event)) {
 			switch(event.type) {
+				case SDL_MOUSEMOTION:
+					mouse_x = event.motion.x;
+					mouse_y = event.motion.y;
+					break;
 				case SDL_MOUSEBUTTONDOWN:
 					switch(event.button.button) {
 						case 1:
-							remove_block(screen, event.button.x, event.button.y);
+							destroy_block(screen, event.button.x, event.button.y);
 							break;
 						case 3:
-							add_block(screen, event.button.x, event.button.y);
+							place_block(screen, event.button.x, event.button.y);
 							break;
 					}
 					break;
@@ -286,6 +350,7 @@ int main(void) {
 
 		/* draw the tiles */
 		draw_all_tiles(screen);
+		draw_cursor(screen, mouse_x, mouse_y);
 
 		SDL_Flip(screen);
 		SDL_Delay(1000/60);
@@ -299,5 +364,6 @@ int main(void) {
 
 	SDL_FreeSurface(tileset);
 	SDL_FreeSurface(player_sf);
+	SDL_FreeSurface(cursor);
 	return 0;
 }

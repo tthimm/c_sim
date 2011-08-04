@@ -3,4 +3,4 @@ all: main.o
 
 main.o: main.c
 #	gcc -c main.c `sdl-config --cflags` -lSDL_image -pedantic -W -Wall
-	gcc -c main.c `sdl-config --cflags` -lSDL_image -pedantic
+	gcc -c main.c `sdl-config --cflags` -lSDL_image
