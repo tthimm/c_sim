@@ -29,6 +29,12 @@ SDL_Surface *temp, *tileset, *player_sf, *cursor;
 int mouse_x = 0;
 int mouse_y = 0;
 
+struct bg_color {
+	int r;
+	int g;
+	int b;
+} bg = {47, 136, 248};
+
 /* load map file and fill tiles array */
 void load_map(void) {
 	int i = 0;
@@ -122,7 +128,7 @@ void set_bg_color(SDL_Surface *scr) {
 	dst.y = 0;
 	dst.w = SCREEN_WIDTH;
 	dst.h = SCREEN_HEIGHT;
-	SDL_FillRect(scr, &dst, SDL_MapRGB(scr->format, 47, 136, 248));
+	SDL_FillRect(scr, &dst, SDL_MapRGB(scr->format, bg.r, bg.g, bg.b));
 }
 
 void load_tileset(void) {
@@ -144,7 +150,7 @@ void draw_dirty_rect(SDL_Surface *screen, int x, int y) {
 	dirty_rect.y = (y/BLOCK_SIZE)*BLOCK_SIZE;
 	dirty_rect.w = BLOCK_SIZE;
 	dirty_rect.h = BLOCK_SIZE;
-	SDL_FillRect(screen, &dirty_rect, SDL_MapRGB(screen->format, 47, 136, 248));
+	SDL_FillRect(screen, &dirty_rect, SDL_MapRGB(screen->format, bg.r, bg.g, bg.b));
 }
 
 /* draw the tile */
@@ -224,7 +230,6 @@ void draw_player(SDL_Surface *screen, struct player *p) {
 
 /* destroy block */
 void destroy_block(SDL_Surface *scr, int x, int y) {
-	SDL_Rect rect;
 	int dx = x/BLOCK_SIZE;
 	int dy = y/BLOCK_SIZE;
 	int tile = tiles[dx][dy];
@@ -232,20 +237,12 @@ void destroy_block(SDL_Surface *scr, int x, int y) {
 	/* if tile is not air and not water */
 	if((tile != AIR) & ((tile < WATER1) | (tile > WATER5))) {
 		tiles[dx][dy] = AIR;
-
-		/* dirty rect */
-		rect.x = dx*BLOCK_SIZE; /* don't use x here. we need rounded values */
-		rect.y = dy*BLOCK_SIZE;
-		rect.w = BLOCK_SIZE;
-		rect.h = BLOCK_SIZE;
-
-		/* draw dirty rect over old block */
-		SDL_FillRect(scr, &rect, SDL_MapRGB(scr->format, 47, 136, 248));
+		draw_dirty_rect(scr, x, y);
 	}
 }
 
 /* place block if there is enough room */
-void place_block(SDL_Surface *scr, int x, int y) {
+void place_block(int x, int y) {
 	int dx = x/BLOCK_SIZE;
 	int dy = y/BLOCK_SIZE;
 	int tile = tiles[dx][dy];
@@ -331,7 +328,7 @@ int main(void) {
 							destroy_block(screen, event.button.x, event.button.y);
 							break;
 						case 3:
-							place_block(screen, event.button.x, event.button.y);
+							place_block(event.button.x, event.button.y);
 							break;
 					}
 					break;
@@ -345,11 +342,9 @@ int main(void) {
 			}
 		}
 
-		/* draw the player first, for Z-Order */
-		draw_player(screen, &p);
-
 		/* draw the tiles */
 		draw_all_tiles(screen);
+		draw_player(screen, &p);
 		draw_cursor(screen, mouse_x, mouse_y);
 
 		SDL_Flip(screen);
