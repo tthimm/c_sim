@@ -7,6 +7,7 @@
  * TODO: add liquids (oil, lava)
  * TODO: add tools
 */
+
 #ifndef _GNU_SOURCE
 	#define _GNU_SOURCE
 #endif
@@ -15,11 +16,10 @@
 #include <string.h>
 #include <SDL/SDL.h>
 #include "SDL/SDL_image.h"
-
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
 
-//             -1   0     20     40    60     80      100     120     140     160
+/*             -1   0     20     40    60     80      100     120     140     160*/
 enum blocks { AIR, DIRT, GRASS, SAND, STONE, WATER1, WATER2, WATER3, WATER4, WATER5 };
 
 struct map {
@@ -30,22 +30,27 @@ struct map {
 	int **tiles;
 } map = {"media/maps/world.map", 20, 0, 0};
 
-SDL_Surface *temp, *tileset, *player_image, *cursor;
-int mouse_x = 0;
-int mouse_y = 0;
-
 struct bg_color {
 	int r;
 	int g;
 	int b;
 } bg = {47, 136, 248};
 
+struct player {
+	int x;
+	int y;
+	int vx;
+	int vy;
+} player = { 0, 0, 0, 0};
+
+SDL_Surface *temp, *tileset, *player_image, *cursor;
+int mouse_x = 0;
+int mouse_y = 0;
+
 /* load map file and fill tiles array */
 void load_map(char *name) {
-	int i = 0;
-	int j = 0;
-	int k = 0;
-	int c;
+	int c, i, j, k;
+	i = j = k = 0;
 	int nRet;
 	FILE *mmap;
 	size_t *t = malloc(0);
@@ -175,16 +180,16 @@ void really_draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
 
 /* sometimes we can draw directly and sometimes we must draw the dirty rect first */
 void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
-	// AIR tile
+	/* AIR tile */
 	if(tile_x == -20) {
 		draw_dirty_rect(screen, x, y);
 	}
-	// transparent WATER tiles
+	/* transparent WATER tiles */
 	else if((tile_x >= 80) & (tile_x <= 140)) {
 		draw_dirty_rect(screen, x, y);
 		really_draw_tile(screen, x, y, tile_x);
 	}
-	// any other tiles
+	/* any other tiles */
 	else {
 		really_draw_tile(screen, x, y, tile_x);
 	}
@@ -200,13 +205,6 @@ void draw_all_tiles(SDL_Surface *screen) {
 		}
 	}
 }
-
-struct player {
-	int x;
-	int y;
-	int vx;
-	int vy;
-} player = { 0, 0, 0, 0};
 
 void load_player_image(void) {
 	temp = IMG_Load("media/images/player.png");
@@ -285,10 +283,27 @@ void draw_cursor(SDL_Surface *screen, int x, int y) {
 	SDL_BlitSurface(cursor, &src, screen, &dst);
 }
 
+void delay(unsigned int frame_limit) {
+	unsigned int ticks = SDL_GetTicks();
+
+	if (frame_limit < ticks) {
+		return;
+	}
+
+	if (frame_limit > ticks + (1000/60)) {
+		SDL_Delay((1000/60));
+	}
+
+	else {
+		SDL_Delay(frame_limit - ticks);
+	}
+}
+
 int main(void) {
 	SDL_Surface *screen;
 	SDL_Event event;
 	int i, done = 0;
+	unsigned int frame_limit = SDL_GetTicks() + (1000/60);
 
 	if(SDL_Init(SDL_INIT_VIDEO) == -1) {
 		printf("Can't initialize SDL: %s\n", SDL_GetError());
@@ -353,7 +368,9 @@ int main(void) {
 		draw_cursor(screen, mouse_x, mouse_y);
 
 		SDL_Flip(screen);
-		SDL_Delay(1000/60);
+		delay(frame_limit);
+
+		frame_limit = SDL_GetTicks() + (1000/60);
 	}
 
 	/* free tiles array in reverse order */
