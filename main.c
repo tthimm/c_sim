@@ -18,14 +18,19 @@
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
-#define BLOCK_SIZE 20
+
 //             -1   0     20     40    60     80      100     120     140     160
 enum blocks { AIR, DIRT, GRASS, SAND, STONE, WATER1, WATER2, WATER3, WATER4, WATER5 };
 
-int map_width = 0;
-int map_height = 0;
-int **tiles;
-SDL_Surface *temp, *tileset, *player_sf, *cursor;
+struct map {
+	char *filename;
+	int blocksize;
+	int w;
+	int h;
+	int **tiles;
+} map = {"media/maps/world.map", 20, 0, 0};
+
+SDL_Surface *temp, *tileset, *player_image, *cursor;
 int mouse_x = 0;
 int mouse_y = 0;
 
@@ -36,53 +41,53 @@ struct bg_color {
 } bg = {47, 136, 248};
 
 /* load map file and fill tiles array */
-void load_map(void) {
+void load_map(char *name) {
 	int i = 0;
 	int j = 0;
 	int k = 0;
 	int c;
 	int nRet;
-	FILE *map;
+	FILE *mmap;
 	size_t *t = malloc(0);
 	char **gptr = (char **)malloc(sizeof(char*));
 	*gptr = NULL;
 
 	/* open mapfile */
-	map = fopen("media/maps/world.map", "r");
-	if(NULL == map) {
+	mmap = fopen(name, "r");
+	if(NULL == mmap) {
 		printf("couldn't load map file\n");
 		exit(EXIT_FAILURE);
 	}
 
 	/* get map_height & map_width */
-	while( (nRet=getline(gptr, t, map)) > 0) {
-		map_height++;
-		if(map_width == 0) {
-			map_width = strlen(*gptr) - 1;
+	while( (nRet=getline(gptr, t, mmap)) > 0) {
+		map.h++;
+		if(map.w == 0) {
+			map.w = strlen(*gptr) - 1;
 		}
 	}
 	free(gptr);
 	free(t);
 
 	/* allocate memory for tileset array */
-	tiles = (int **)malloc(map_width * sizeof(int *));
-	if(NULL == tiles) {
+	map.tiles = (int **)malloc(map.w * sizeof(int *));
+	if(NULL == map.tiles) {
 		printf("not enough free ram");
 		exit(EXIT_FAILURE);
 	}
-	for(k = 0; k < map_width; k++) {
-		tiles[k] = (int *)malloc(map_height * sizeof(int));
-		if(NULL == tiles[k]) {
+	for(k = 0; k < map.w; k++) {
+		map.tiles[k] = (int *)malloc(map.h * sizeof(int));
+		if(NULL == map.tiles[k]) {
 			printf("not enough free ram for row: %d\n", k);
 			exit(EXIT_FAILURE);
 		}
 	}
 
 	/* set position to begin of stream */
-	rewind(map);
+	rewind(mmap);
 
 	/* fill tiles array with values from mapfile */
-	while( (c = fgetc(map)) != EOF ) {
+	while( (c = fgetc(mmap)) != EOF ) {
 		/* if newline */
 		if(c == 10) {
 			j++;
@@ -101,18 +106,18 @@ void load_map(void) {
 				case '5':	c = WATER5;		break;
 				default:	c = AIR;		break;
 			}
-			tiles[i++][j] = c;
+			map.tiles[i++][j] = c;
 		}
 	}
-	fclose(map);
+	fclose(mmap);
 }
 
 /* blocks are solid, water and air aren't */
 int solid(int x, int y) {
-	int dx = x/BLOCK_SIZE;
-	int dy = y/BLOCK_SIZE;
-	int tile = tiles[dx][dy];
-	if( (y < 0) | (x < 0) | (y >= map_height * BLOCK_SIZE) | (x >= map_width * BLOCK_SIZE) |
+	int dx = x/map.blocksize;
+	int dy = y/map.blocksize;
+	int tile = map.tiles[dx][dy];
+	if( (y < 0) | (x < 0) | (y >= map.h * map.blocksize) | (x >= map.w * map.blocksize) |
 			((tile != AIR) & (tile < WATER1)) | ((tile != AIR) & (tile > WATER5))) {
 		return 1;
 	}
@@ -146,10 +151,10 @@ void load_tileset(void) {
 /* draw background for deleted and transparent tiles */
 void draw_dirty_rect(SDL_Surface *screen, int x, int y) {
 	SDL_Rect dirty_rect;
-	dirty_rect.x = (x/BLOCK_SIZE)*BLOCK_SIZE;
-	dirty_rect.y = (y/BLOCK_SIZE)*BLOCK_SIZE;
-	dirty_rect.w = BLOCK_SIZE;
-	dirty_rect.h = BLOCK_SIZE;
+	dirty_rect.x = (x/map.blocksize)*map.blocksize;
+	dirty_rect.y = (y/map.blocksize)*map.blocksize;
+	dirty_rect.w = map.blocksize;
+	dirty_rect.h = map.blocksize;
 	SDL_FillRect(screen, &dirty_rect, SDL_MapRGB(screen->format, bg.r, bg.g, bg.b));
 }
 
@@ -158,13 +163,13 @@ void really_draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
 	SDL_Rect src, dst;
 	src.x = tile_x;
 	src.y = 0;
-	src.w = BLOCK_SIZE;
-	src.h = BLOCK_SIZE;
+	src.w = map.blocksize;
+	src.h = map.blocksize;
 
 	dst.x = x;
 	dst.y = y;
-	dst.w = BLOCK_SIZE;
-	dst.h = BLOCK_SIZE;
+	dst.w = map.blocksize;
+	dst.h = map.blocksize;
 	SDL_BlitSurface(tileset, &src, screen, &dst);
 }
 
@@ -188,10 +193,10 @@ void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
 /* iterate through tiles array and draw tiles */
 void draw_all_tiles(SDL_Surface *screen) {
 	int i, j, tileset_index;
-	for(i = 0; i < map_width; i++) {
-		for(j = 0; j < map_height; j++) {
-			tileset_index = tiles[i][j] - 1;
-			draw_tile(screen, i*BLOCK_SIZE, j*BLOCK_SIZE, tileset_index * BLOCK_SIZE);
+	for(i = 0; i < map.w; i++) {
+		for(j = 0; j < map.h; j++) {
+			tileset_index = map.tiles[i][j] - 1;
+			draw_tile(screen, i*map.blocksize, j*map.blocksize, tileset_index * map.blocksize);
 		}
 	}
 }
@@ -201,12 +206,12 @@ struct player {
 	int y;
 	int vx;
 	int vy;
-} p = { 0, 0, 0, 0};
+} player = { 0, 0, 0, 0};
 
 void load_player_image(void) {
 	temp = IMG_Load("media/images/player.png");
 	SDL_SetColorKey(temp, SDL_SRCCOLORKEY | SDL_RLEACCEL, (Uint16) SDL_MapRGB(temp->format, 255, 0, 0));
-	player_sf = SDL_DisplayFormat(temp);
+	player_image = SDL_DisplayFormat(temp);
 	if(NULL == tileset) {
 		printf("Can't load player: %s", SDL_GetError());
 		exit(EXIT_FAILURE);
@@ -214,42 +219,42 @@ void load_player_image(void) {
 	SDL_FreeSurface(temp);
 }
 
-void draw_player(SDL_Surface *screen, struct player *p) {
+void draw_player(SDL_Surface *screen) {
 	SDL_Rect src, dst;
 	src.x = 0;
 	src.y = 0;
 	src.w = 25;
 	src.h = 45;
 
-	dst.x = p->x;
-	dst.y = p->y;
+	dst.x = player.x;
+	dst.y = player.y;
 	dst.w = 25;
 	dst.h = 45;
-	SDL_BlitSurface(player_sf, &src, screen, &dst);
+	SDL_BlitSurface(player_image, &src, screen, &dst);
 }
 
 /* destroy block */
 void destroy_block(SDL_Surface *scr, int x, int y) {
-	int dx = x/BLOCK_SIZE;
-	int dy = y/BLOCK_SIZE;
-	int tile = tiles[dx][dy];
+	int dx = x/map.blocksize;
+	int dy = y/map.blocksize;
+	int tile = map.tiles[dx][dy];
 
 	/* if tile is not air and not water */
 	if((tile != AIR) & ((tile < WATER1) | (tile > WATER5))) {
-		tiles[dx][dy] = AIR;
+		map.tiles[dx][dy] = AIR;
 		draw_dirty_rect(scr, x, y);
 	}
 }
 
 /* place block if there is enough room */
 void place_block(int x, int y) {
-	int dx = x/BLOCK_SIZE;
-	int dy = y/BLOCK_SIZE;
-	int tile = tiles[dx][dy];
+	int dx = x/map.blocksize;
+	int dy = y/map.blocksize;
+	int tile = map.tiles[dx][dy];
 
 	/* if tile is air or any water block */
 	if((tile == AIR) | ((tile >= WATER1) & (tile <= WATER5))) {
-		tiles[dx][dy] = DIRT;
+		map.tiles[dx][dy] = DIRT;
 	}
 
 }
@@ -270,13 +275,13 @@ void draw_cursor(SDL_Surface *screen, int x, int y) {
 	SDL_Rect src, dst;
 	src.x = 0;
 	src.y = 0;
-	src.w = BLOCK_SIZE;
-	src.h = BLOCK_SIZE;
+	src.w = map.blocksize;
+	src.h = map.blocksize;
 
-	dst.x = (x/BLOCK_SIZE)*BLOCK_SIZE;
-	dst.y = (y/BLOCK_SIZE)*BLOCK_SIZE;
-	dst.w = BLOCK_SIZE;
-	dst.h = BLOCK_SIZE;
+	dst.x = (x/map.blocksize)*map.blocksize;
+	dst.y = (y/map.blocksize)*map.blocksize;
+	dst.w = map.blocksize;
+	dst.h = map.blocksize;
 	SDL_BlitSurface(cursor, &src, screen, &dst);
 }
 
@@ -303,7 +308,7 @@ int main(void) {
 	load_cursor();
 
 	/* load the map and fill tiles array */
-	load_map();
+	load_map(map.filename);
 
 	/* set bg color */
 	set_bg_color(screen);
@@ -344,7 +349,7 @@ int main(void) {
 
 		/* draw the tiles */
 		draw_all_tiles(screen);
-		draw_player(screen, &p);
+		draw_player(screen);
 		draw_cursor(screen, mouse_x, mouse_y);
 
 		SDL_Flip(screen);
@@ -352,13 +357,13 @@ int main(void) {
 	}
 
 	/* free tiles array in reverse order */
-	for(i = 0; i < map_height; i++) {
-		free(tiles[i]);
+	for(i = 0; i < map.h; i++) {
+		free(map.tiles[i]);
 	}
-	free(tiles);
+	free(map.tiles);
 
 	SDL_FreeSurface(tileset);
-	SDL_FreeSurface(player_sf);
+	SDL_FreeSurface(player_image);
 	SDL_FreeSurface(cursor);
 	return 0;
 }
