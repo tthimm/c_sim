@@ -18,6 +18,9 @@
 #include "SDL/SDL_image.h"
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
+#define GRAVITY 0.8
+#define PLAYER_SPEED 4
+#define MAX_FALL_SPEED 20
 
 /*             -1   0     20     40    60     80      100     120     140     160*/
 enum blocks { AIR, DIRT, GRASS, SAND, STONE, WATER1, WATER2, WATER3, WATER4, WATER5 };
@@ -36,14 +39,17 @@ struct bg_color {
 	int b;
 } bg = {47, 136, 248};
 
-struct player {
-	int x;
-	int y;
-	int vx;
-	int vy;
-} player = { 0, 0, 0, 0};
+struct Player {
+	int x, y, w, h, on_ground, think_time;
+	float vx, vy;
+} player = { 0, 0, 25, 45, 1, 0, 0, 0 };
+
+typedef struct Input {
+	int left, right, jump;
+} Input;
 
 SDL_Surface *temp, *tileset, *player_image, *cursor;
+Input input;
 int mouse_x = 0;
 int mouse_y = 0;
 
@@ -217,17 +223,194 @@ void load_player_image(void) {
 	SDL_FreeSurface(temp);
 }
 
+/* TODO: smaller player fits better */
+void check_against_map(void)
+{
+	int i, x1, x2, y1, y2;
+
+	/* Remove the user from the ground */
+
+	player.on_ground = 0;
+
+	/* Test the horizontal movement first */
+
+	i = player.h > map.blocksize ? map.blocksize : player.h;
+
+	for (;;)
+	{
+		x1 = (player.x + player.vx) / map.blocksize;
+		x2 = (player.x + player.vx + player.w - 1) / map.blocksize;
+
+		y1 = (player.y) / map.blocksize;
+		y2 = (player.y + i - 1) / map.blocksize;
+
+		if (x1 >= 0 && x2 < map.w && y1 >= 0 && y2 < map.h)
+		{
+			if (player.vx > 0)
+			{
+				/* Trying to move right */
+
+				if ((map.tiles[x1][y2] != AIR) || (map.tiles[x2][y2] != AIR))
+				{
+					/* Place the player as close to the solid tile as possible */
+
+					player.x = x2 * map.blocksize;
+
+					player.x -= player.w + 1;
+
+					player.vx = 0;
+				}
+			}
+
+			else if (player.vx < 0)
+			{
+				/* Trying to move left */
+
+				if ((map.tiles[x1][y1] != AIR) || (map.tiles[x2][y1] != AIR))
+				{
+					/* Place the player as close to the solid tile as possible */
+
+					player.x = (x1 + 1) * map.blocksize;
+
+					player.vx = 0;
+				}
+			}
+		}
+
+		/* Exit this loop if we have tested all of the body */
+
+		if (i == player.h)
+		{
+			break;
+		}
+
+		/* Test the next block */
+
+		i += map.blocksize;
+
+		if (i > player.h)
+		{
+			i = player.h;
+		}
+	}
+
+	/* Now test the vertical movement */
+
+	i = player.w > map.blocksize ? map.blocksize : player.w;
+
+	for (;;)
+	{
+		x1 = (player.x) / map.blocksize;
+		x2 = (player.x + i) / map.blocksize;
+
+		y1 = (player.y + player.vy) / map.blocksize;
+		y2 = (player.y + player.vy + player.h) / map.blocksize;
+
+		if (x1 >= 0 && x2 < map.w && y1 >= 0 && y2 < map.h)
+		{
+			if (player.vy > 0)
+			{
+				/* Trying to move down */
+
+				if ((map.tiles[x2][y1] != AIR) || (map.tiles[x2][y2] != AIR))
+				{
+					/* Place the player as close to the solid tile as possible */
+
+					player.y = y2 * map.blocksize;
+					player.y -= player.h;
+
+					player.vy = 0;
+
+					player.on_ground = 1;
+				}
+			}
+
+			else if (player.vy < 0)
+			{
+				/* Trying to move up */
+
+				if ((map.tiles[x1][y1] != AIR) || (map.tiles[x1][y2] != AIR))
+				{
+					/* Place the player as close to the solid tile as possible */
+
+					player.y = (y1 + 1) * map.blocksize;
+
+					player.vy = 0;
+				}
+			}
+		}
+
+		if (i == player.w)
+		{
+			break;
+		}
+
+		i += map.blocksize;
+
+		if (i > player.w)
+		{
+			i = player.w;
+		}
+	}
+
+	/* Now apply the movement */
+
+	player.x += player.vx;
+	player.y += player.vy;
+
+	if (player.x < 0)
+	{
+		player.x = 0;
+	}
+
+	else if (player.x + player.w >= (map.w * map.blocksize))
+	{
+		player.x = (map.w * map.blocksize) - player.w - 1;
+	}
+
+	if (player.y > (map.h * map.blocksize))
+	{
+		player.think_time = 60;
+	}
+}
+
+void move_player() {
+	if(player.think_time == 0) {
+		player.vx = 0;
+		player.vy += GRAVITY;
+
+		if(player.vy >= MAX_FALL_SPEED) {
+			player.vy = MAX_FALL_SPEED;
+		}
+
+		if(input.left == 1) {
+			player.vx -= PLAYER_SPEED;
+		}
+		else if(input.right == 1) {
+			player.vx += PLAYER_SPEED;
+		}
+
+		if(input.jump == 1) {
+			if(player.on_ground == 1) {
+				player.vy = -11;
+			}
+		}
+		input.jump = 0;
+		check_against_map();
+	}
+}
+
 void draw_player(SDL_Surface *screen) {
 	SDL_Rect src, dst;
 	src.x = 0;
 	src.y = 0;
-	src.w = 25;
-	src.h = 45;
+	src.w = player.w;
+	src.h = player.h;
 
 	dst.x = player.x;
 	dst.y = player.y;
-	dst.w = 25;
-	dst.h = 45;
+	dst.w = player.w;
+	dst.h = player.h;
 	SDL_BlitSurface(player_image, &src, screen, &dst);
 }
 
@@ -281,6 +464,15 @@ void draw_cursor(SDL_Surface *screen, int x, int y) {
 	dst.w = map.blocksize;
 	dst.h = map.blocksize;
 	SDL_BlitSurface(cursor, &src, screen, &dst);
+}
+
+void draw(SDL_Surface *screen, int mouse_x, int mouse_y) {
+	draw_all_tiles(screen);
+	draw_player(screen);
+	draw_cursor(screen, mouse_x, mouse_y);
+
+	SDL_Flip(screen);
+	SDL_Delay(1);
 }
 
 void delay(unsigned int frame_limit) {
@@ -338,6 +530,9 @@ int main(void) {
 	while(!done) {
 		while(SDL_PollEvent(&event)) {
 			switch(event.type) {
+				case SDL_QUIT:
+					done = 1;
+					break;
 				case SDL_MOUSEMOTION:
 					mouse_x = event.motion.x;
 					mouse_y = event.motion.y;
@@ -350,6 +545,8 @@ int main(void) {
 						case 3:
 							place_block(event.button.x, event.button.y);
 							break;
+						default:
+							break;
 					}
 					break;
 				case SDL_KEYDOWN:
@@ -357,19 +554,41 @@ int main(void) {
 						case SDLK_ESCAPE:
 							done = 1;
 							break;
+						case SDLK_a:
+							input.left = 1;
+							break;
+						case SDLK_d:
+							input.right = 1;
+							break;
+						case SDLK_SPACE:
+							input.jump = 1;
+							break;
+						default:
+							break;
 					}
+					break;
+
+				case SDL_KEYUP:
+					switch(event.key.keysym.sym) {
+						case SDLK_a:
+							input.left = 0;
+							break;
+						case SDLK_d:
+							input.right = 0;
+							break;
+						default:
+							break;
+					}
+					break;
+				default:
 					break;
 			}
 		}
+		move_player(player);
 
-		/* draw the tiles */
-		draw_all_tiles(screen);
-		draw_player(screen);
-		draw_cursor(screen, mouse_x, mouse_y);
+		draw(screen, mouse_x, mouse_y);
 
-		SDL_Flip(screen);
 		delay(frame_limit);
-
 		frame_limit = SDL_GetTicks() + (1000/60);
 	}
 
