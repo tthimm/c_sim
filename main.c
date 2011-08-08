@@ -18,8 +18,8 @@
 #include "SDL/SDL_image.h"
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
-#define GRAVITY 0.8
-#define PLAYER_SPEED 4
+#define GRAVITY 2.5 //0.8
+#define PLAYER_SPEED 3
 #define MAX_FALL_SPEED 20
 
 /*             -1   0     20     40    60     80      100     120     140     160*/
@@ -40,9 +40,9 @@ struct bg_color {
 } bg = {47, 136, 248};
 
 struct Player {
-	int x, y, w, h, on_ground, think_time;
+	int x, y, w, h, on_ground;
 	float vx, vy;
-} player = { 0, 0, 25, 45, 1, 0, 0, 0 };
+} player = { 50, 100, 20, 20, 1, 0, 0 };
 
 typedef struct Input {
 	int left, right, jump;
@@ -127,13 +127,18 @@ void load_map(char *name) {
 int solid(int x, int y) {
 	int dx = x/map.blocksize;
 	int dy = y/map.blocksize;
-	int tile = map.tiles[dx][dy];
-	if( (y < 0) | (x < 0) | (y >= map.h * map.blocksize) | (x >= map.w * map.blocksize) |
-			((tile != AIR) & (tile < WATER1)) | ((tile != AIR) & (tile > WATER5))) {
-		return 1;
+	if((dx < map.w) && (dy < map.h)) { /* fix for trying to access index out of bounds > */
+		int tile = map.tiles[dx][dy];
+		if( (y < 0) || (x < 0) || (y >= map.h * map.blocksize) || (x >= map.w * map.blocksize) ||
+			((tile != AIR) && (tile < WATER1)) || ((tile != AIR) && (tile > WATER5))) {
+			return 1;
+		}
+		else {
+			return 0;
+		}
 	}
 	else {
-		return 0;
+		return 1;
 	}
 }
 
@@ -223,181 +228,79 @@ void load_player_image(void) {
 	SDL_FreeSurface(temp);
 }
 
-/* TODO: smaller player fits better */
-void check_against_map(void)
-{
-	int i, x1, x2, y1, y2;
-
-	/* Remove the user from the ground */
-
+void check_against_map(void) {
+	int i, x, y;
+	/* current position in map.tiles array */
+	x = player.x / map.blocksize;
+	y = player.y / map.blocksize;
 	player.on_ground = 0;
 
-	/* Test the horizontal movement first */
-
-	i = player.h > map.blocksize ? map.blocksize : player.h;
-
-	for (;;)
-	{
-		x1 = (player.x + player.vx) / map.blocksize;
-		x2 = (player.x + player.vx + player.w - 1) / map.blocksize;
-
-		y1 = (player.y) / map.blocksize;
-		y2 = (player.y + i - 1) / map.blocksize;
-
-		if (x1 >= 0 && x2 < map.w && y1 >= 0 && y2 < map.h)
-		{
-			if (player.vx > 0)
-			{
-				/* Trying to move right */
-
-				if ((map.tiles[x1][y2] != AIR) || (map.tiles[x2][y2] != AIR))
-				{
-					/* Place the player as close to the solid tile as possible */
-
-					player.x = x2 * map.blocksize;
-
-					player.x -= player.w + 1;
-
-					player.vx = 0;
-				}
+	/* move down / fall */
+	if(player.vy > 0) {
+		for(i = 0; i < player.vy; i++) {
+			if(!solid(player.x, player.y + player.h)) {
+				player.y += 1;
 			}
-
-			else if (player.vx < 0)
-			{
-				/* Trying to move left */
-
-				if ((map.tiles[x1][y1] != AIR) || (map.tiles[x2][y1] != AIR))
-				{
-					/* Place the player as close to the solid tile as possible */
-
-					player.x = (x1 + 1) * map.blocksize;
-
-					player.vx = 0;
-				}
-			}
-		}
-
-		/* Exit this loop if we have tested all of the body */
-
-		if (i == player.h)
-		{
-			break;
-		}
-
-		/* Test the next block */
-
-		i += map.blocksize;
-
-		if (i > player.h)
-		{
-			i = player.h;
 		}
 	}
 
-	/* Now test the vertical movement */
-
-	i = player.w > map.blocksize ? map.blocksize : player.w;
-
-	for (;;)
-	{
-		x1 = (player.x) / map.blocksize;
-		x2 = (player.x + i) / map.blocksize;
-
-		y1 = (player.y + player.vy) / map.blocksize;
-		y2 = (player.y + player.vy + player.h) / map.blocksize;
-
-		if (x1 >= 0 && x2 < map.w && y1 >= 0 && y2 < map.h)
-		{
-			if (player.vy > 0)
-			{
-				/* Trying to move down */
-
-				if ((map.tiles[x2][y1] != AIR) || (map.tiles[x2][y2] != AIR))
-				{
-					/* Place the player as close to the solid tile as possible */
-
-					player.y = y2 * map.blocksize;
-					player.y -= player.h;
-
-					player.vy = 0;
-
-					player.on_ground = 1;
-				}
-			}
-
-			else if (player.vy < 0)
-			{
-				/* Trying to move up */
-
-				if ((map.tiles[x1][y1] != AIR) || (map.tiles[x1][y2] != AIR))
-				{
-					/* Place the player as close to the solid tile as possible */
-
-					player.y = (y1 + 1) * map.blocksize;
-
-					player.vy = 0;
+	/* jump */
+	if(solid(player.x, player.y + player.h)) {
+		player.on_ground = 1;
+		if(player.vy < 0) {
+			for(i = 0; i > player.vy; i--) {
+				player.on_ground = 0;
+				if(!solid(player.x, player.y - 1)) {
+					player.y -= 1;
 				}
 			}
 		}
+	}
+	else {
+		player.on_ground = 0;
+	}
 
-		if (i == player.w)
-		{
-			break;
+	/* move right */
+	if(player.vx > 0) {
+		for(i = 0; i < player.vx; i++) {
+			if(!solid(player.x + player.w, player.y)) {
+				player.x += 1;
+			}
 		}
-
-		i += map.blocksize;
-
-		if (i > player.w)
-		{
-			i = player.w;
+	}
+	/* move left */
+	if(player.vx < 0) {
+		for(i = 0; i > player.vx; i--) {
+			if(!solid(player.x - 1, player.y)) {
+				player.x -= 1;
+			}
 		}
-	}
-
-	/* Now apply the movement */
-
-	player.x += player.vx;
-	player.y += player.vy;
-
-	if (player.x < 0)
-	{
-		player.x = 0;
-	}
-
-	else if (player.x + player.w >= (map.w * map.blocksize))
-	{
-		player.x = (map.w * map.blocksize) - player.w - 1;
-	}
-
-	if (player.y > (map.h * map.blocksize))
-	{
-		player.think_time = 60;
 	}
 }
 
 void move_player() {
-	if(player.think_time == 0) {
-		player.vx = 0;
-		player.vy += GRAVITY;
+	player.vx = 0;
+	player.vy += GRAVITY;
 
-		if(player.vy >= MAX_FALL_SPEED) {
-			player.vy = MAX_FALL_SPEED;
-		}
-
-		if(input.left == 1) {
-			player.vx -= PLAYER_SPEED;
-		}
-		else if(input.right == 1) {
-			player.vx += PLAYER_SPEED;
-		}
-
-		if(input.jump == 1) {
-			if(player.on_ground == 1) {
-				player.vy = -11;
-			}
-		}
-		input.jump = 0;
-		check_against_map();
+	if(player.vy >= MAX_FALL_SPEED) {
+		player.vy = MAX_FALL_SPEED;
 	}
+
+	if(input.left == 1) {
+		player.vx -= PLAYER_SPEED;
+	}
+	else if(input.right == 1) {
+		player.vx += PLAYER_SPEED;
+	}
+
+	if(input.jump == 1) {
+		if(player.on_ground == 1) {
+			player.vy = -31;
+		}
+	}
+
+	input.jump = 0;
+	check_against_map();
 }
 
 void draw_player(SDL_Surface *screen) {
@@ -418,12 +321,14 @@ void draw_player(SDL_Surface *screen) {
 void destroy_block(SDL_Surface *scr, int x, int y) {
 	int dx = x/map.blocksize;
 	int dy = y/map.blocksize;
-	int tile = map.tiles[dx][dy];
+	if((dx < map.w) && (dy < map.h)) {
+		int tile = map.tiles[dx][dy];
 
-	/* if tile is not air and not water */
-	if((tile != AIR) & ((tile < WATER1) | (tile > WATER5))) {
-		map.tiles[dx][dy] = AIR;
-		draw_dirty_rect(scr, x, y);
+		/* if tile is not air and not water */
+		if((tile != AIR)) {/* & ((tile < WATER1) | (tile > WATER5))) {*/
+			map.tiles[dx][dy] = AIR;
+			draw_dirty_rect(scr, x, y);
+		}
 	}
 }
 
@@ -431,11 +336,12 @@ void destroy_block(SDL_Surface *scr, int x, int y) {
 void place_block(int x, int y) {
 	int dx = x/map.blocksize;
 	int dy = y/map.blocksize;
-	int tile = map.tiles[dx][dy];
-
-	/* if tile is air or any water block */
-	if((tile == AIR) | ((tile >= WATER1) & (tile <= WATER5))) {
-		map.tiles[dx][dy] = DIRT;
+	if((dx < map.w) && (dy < map.h)) {
+		int tile = map.tiles[dx][dy];
+		/* if tile is air or any water block */
+		if((tile == AIR) | ((tile >= WATER1) & (tile <= WATER5))) {
+			map.tiles[dx][dy] = DIRT;
+		}
 	}
 
 }
