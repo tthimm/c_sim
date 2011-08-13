@@ -18,18 +18,16 @@
 #include "SDL/SDL_image.h"
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
-#define GRAVITY 2.5 //0.8
+#define GRAVITY 0.8
 #define PLAYER_SPEED 3
 #define MAX_FALL_SPEED 20
 
-/*             -1   0     20     40    60     80      100     120     140     160*/
+/* tile index  -1   0     20     40    60     80      100     120     140     160*/
 enum blocks { AIR, DIRT, GRASS, SAND, STONE, WATER1, WATER2, WATER3, WATER4, WATER5 };
 
 struct map {
 	char *filename;
-	int blocksize;
-	int w;
-	int h;
+	int blocksize, w, h;
 	int **tiles;
 } map = {"media/maps/world.map", 20, 0, 0};
 
@@ -42,7 +40,7 @@ struct bg_color {
 struct Player {
 	int x, y, w, h, on_ground;
 	float vx, vy;
-} player = { 50, 100, 20, 20, 1, 0, 0 };
+} player = { 0, 0, 18, 18, 1, 0, 0 };
 
 typedef struct Input {
 	int left, right, jump;
@@ -115,6 +113,11 @@ void load_map(char *name) {
 				case '3':	c = WATER3;		break;
 				case '4':	c = WATER4;		break;
 				case '5':	c = WATER5;		break;
+				case 'p':
+					player.x = i * map.blocksize;
+					player.y = j * map.blocksize;
+					c = AIR;
+					break;
 				default:	c = AIR;		break;
 			}
 			map.tiles[i++][j] = c;
@@ -129,7 +132,7 @@ int solid(int x, int y) {
 	int dy = y/map.blocksize;
 	if((dx < map.w) && (dy < map.h)) { /* fix for trying to access index out of bounds > */
 		int tile = map.tiles[dx][dy];
-		if( (y < 0) || (x < 0) || (y >= map.h * map.blocksize) || (x >= map.w * map.blocksize) ||
+		if( (y < 0) || (x < 0) || (dy >= map.h) || (dx >= map.w) ||
 			((tile != AIR) && (tile < WATER1)) || ((tile != AIR) && (tile > WATER5))) {
 			return 1;
 		}
@@ -139,6 +142,29 @@ int solid(int x, int y) {
 	}
 	else {
 		return 1;
+	}
+}
+
+int not_solid_above(struct Player *p) {
+
+	if((!solid(p->x, p->y - 1)) &&
+			(!solid(p->x + (p->w / 2), p->y - 1)) &&
+			(!solid(p->x + (p->w - 1), p->y - 1))) {
+		return 1;
+	}
+	else {
+		return 0;
+	}
+}
+
+void on_ground(struct Player *p) {
+	if(solid(p->x, p->y + p->h) ||
+			solid(p->x + (p->w / 2), p->y + p->h) ||
+			solid(p->x + p->w - 1, p->y + p->h)) {
+		p->on_ground = 1;
+	}
+	else {
+		p->on_ground = 0;
 	}
 }
 
@@ -212,7 +238,7 @@ void draw_all_tiles(SDL_Surface *screen) {
 	for(i = 0; i < map.w; i++) {
 		for(j = 0; j < map.h; j++) {
 			tileset_index = map.tiles[i][j] - 1;
-			draw_tile(screen, i*map.blocksize, j*map.blocksize, tileset_index * map.blocksize);
+			draw_tile(screen, i * map.blocksize, j * map.blocksize, tileset_index * map.blocksize);
 		}
 	}
 }
@@ -228,92 +254,93 @@ void load_player_image(void) {
 	SDL_FreeSurface(temp);
 }
 
-void check_against_map(void) {
-	int i, x, y;
-	/* current position in map.tiles array */
-	x = player.x / map.blocksize;
-	y = player.y / map.blocksize;
-	player.on_ground = 0;
+void check_against_map(struct Player *p) {
+	int i;
 
 	/* move down / fall */
-	if(player.vy > 0) {
-		for(i = 0; i < player.vy; i++) {
-			if(!solid(player.x, player.y + player.h)) {
-				player.y += 1;
+	if(p->vy > 0) {
+		for(i = 0; i < p->vy; i++) {
+			on_ground(p);
+			if(!p->on_ground) {
+				p->y += 1;
+			}
+			else {
+				break;
 			}
 		}
 	}
 
 	/* jump */
-	if(solid(player.x, player.y + player.h)) {
-		player.on_ground = 1;
-		if(player.vy < 0) {
-			for(i = 0; i > player.vy; i--) {
-				player.on_ground = 0;
-				if(!solid(player.x, player.y - 1)) {
-					player.y -= 1;
+	if(p->on_ground) {
+		if(p->vy < 0) {
+			for(i = 0; i > p->vy; i--) {
+				if(not_solid_above(p)) {
+					p->y -= 1;
+				}
+				else {
+					/* reset upward movement to prevent jumping if player hits above block and then moves left/right */
+					p->vy = 0;
 				}
 			}
 		}
 	}
-	else {
-		player.on_ground = 0;
-	}
 
 	/* move right */
-	if(player.vx > 0) {
-		for(i = 0; i < player.vx; i++) {
-			if(!solid(player.x + player.w, player.y)) {
-				player.x += 1;
+	if(p->vx > 0) {
+		for(i = 0; i < p->vx; i++) {
+			if((!solid(p->x + p->w, p->y)) && (!solid(p->x + p->w, p->y + p->h - 1))) {
+				p->x += 1;
 			}
 		}
 	}
+
 	/* move left */
-	if(player.vx < 0) {
-		for(i = 0; i > player.vx; i--) {
-			if(!solid(player.x - 1, player.y)) {
-				player.x -= 1;
+	if(p->vx < 0) {
+		for(i = 0; i > p->vx; i--) {
+			if((!solid(p->x - 1, p->y)) && !solid(p->x - 1, p->y + p->h - 1)) {
+				p->x -= 1;
 			}
 		}
 	}
+
 }
 
-void move_player() {
-	player.vx = 0;
-	player.vy += GRAVITY;
+void move_player(struct Player *p) {
+	p->vx = 0;
+	p->vy += GRAVITY;
 
-	if(player.vy >= MAX_FALL_SPEED) {
-		player.vy = MAX_FALL_SPEED;
+	if(p->vy >= MAX_FALL_SPEED) {
+		p->vy = MAX_FALL_SPEED;
 	}
 
 	if(input.left == 1) {
-		player.vx -= PLAYER_SPEED;
+		p->vx -= PLAYER_SPEED;
 	}
 	else if(input.right == 1) {
-		player.vx += PLAYER_SPEED;
+		p->vx += PLAYER_SPEED;
 	}
 
 	if(input.jump == 1) {
-		if(player.on_ground == 1) {
-			player.vy = -31;
+		if(p->on_ground) {
+			p->vy = -8;
 		}
 	}
 
 	input.jump = 0;
-	check_against_map();
+	check_against_map(p);
 }
 
-void draw_player(SDL_Surface *screen) {
+void draw_player(SDL_Surface *screen, struct Player *p) {
 	SDL_Rect src, dst;
 	src.x = 0;
 	src.y = 0;
-	src.w = player.w;
-	src.h = player.h;
+	src.w = p->w;
+	src.h = p->h;
 
-	dst.x = player.x;
-	dst.y = player.y;
-	dst.w = player.w;
-	dst.h = player.h;
+	dst.x = p->x;
+	dst.y = p->y;
+	dst.w = p->w;
+	dst.h = p->h;
 	SDL_BlitSurface(player_image, &src, screen, &dst);
 }
 
@@ -333,17 +360,37 @@ void destroy_block(SDL_Surface *scr, int x, int y) {
 }
 
 /* place block if there is enough room */
-void place_block(int x, int y) {
+void place_block(int x, int y, struct Player *p) {
 	int dx = x/map.blocksize;
 	int dy = y/map.blocksize;
-	if((dx < map.w) && (dy < map.h)) {
+	int player_x = p->x/map.blocksize;
+	int player_y = p->y/map.blocksize;
+	if((dx < map.w) && (dy < map.h) && not_player_position(dx, dy, p) ) {
 		int tile = map.tiles[dx][dy];
 		/* if tile is air or any water block */
 		if((tile == AIR) | ((tile >= WATER1) & (tile <= WATER5))) {
 			map.tiles[dx][dy] = DIRT;
 		}
 	}
+}
 
+/* returns 1 if click position is not player position */
+int not_player_position(int x, int y, struct Player *p) {
+	int x1, x2, x3, y1, y2, y3;
+	x1 = p->x / map.blocksize;
+	x2 = (p->x + p->w / 2) / map.blocksize;
+	x3 = (p->x + p->w - 1) / map.blocksize;
+	y1 = p->y / map.blocksize;
+	y2 = (p->y + p->h / 2) / map.blocksize;
+	y3 = (p->y + p->h - 1) / map.blocksize;
+	if( !((x == x1) && (y == y1)) &&
+			!((x == x2) && (y == y2)) &&
+			!((x == x3) && (y == y3)) ) {
+		return 1;
+	}
+	else {
+		return 0;
+	}
 }
 
 void load_cursor(void) {
@@ -372,9 +419,9 @@ void draw_cursor(SDL_Surface *screen, int x, int y) {
 	SDL_BlitSurface(cursor, &src, screen, &dst);
 }
 
-void draw(SDL_Surface *screen, int mouse_x, int mouse_y) {
+void draw(SDL_Surface *screen, int mouse_x, int mouse_y, struct Player *p) {
 	draw_all_tiles(screen);
-	draw_player(screen);
+	draw_player(screen, p);
 	draw_cursor(screen, mouse_x, mouse_y);
 
 	SDL_Flip(screen);
@@ -391,7 +438,6 @@ void delay(unsigned int frame_limit) {
 	if (frame_limit > ticks + (1000/60)) {
 		SDL_Delay((1000/60));
 	}
-
 	else {
 		SDL_Delay(frame_limit - ticks);
 	}
@@ -449,7 +495,7 @@ int main(void) {
 							destroy_block(screen, event.button.x, event.button.y);
 							break;
 						case 3:
-							place_block(event.button.x, event.button.y);
+							place_block(event.button.x, event.button.y, &player);
 							break;
 						default:
 							break;
@@ -490,9 +536,9 @@ int main(void) {
 					break;
 			}
 		}
-		move_player(player);
+		move_player(&player);
 
-		draw(screen, mouse_x, mouse_y);
+		draw(screen, mouse_x, mouse_y, &player);
 
 		delay(frame_limit);
 		frame_limit = SDL_GetTicks() + (1000/60);
