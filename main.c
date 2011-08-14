@@ -16,12 +16,23 @@
 #include <string.h>
 #include <SDL/SDL.h>
 #include "SDL/SDL_image.h"
+
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
 #define GRAVITY 0.8
 #define PLAYER_SPEED 4
 #define MAX_FALL_SPEED 20
 #define SCROLL_SPEED PLAYER_SPEED
+#define MAX_MASS 1.0
+#define MAX_COMPRESS 0.02
+#define MIN_MASS 0.0001
+#define MAX_SPEED 1 /* max units of water moved out of one block to another, per timestep */
+#define MIN_FLOW 0.01
+#define water1_mass 0.0001
+#define water2_mass 0.2001
+#define water3_mass 0.4001
+#define water4_mass 0.6001
+#define water5_mass 0.8001
 
 /* tile index  -1   0     20     40    60     80      100     120     140     160*/
 enum blocks { AIR, DIRT, GRASS, SAND, STONE, WATER1, WATER2, WATER3, WATER4, WATER5 };
@@ -30,6 +41,8 @@ struct Map {
 	char *filename;
 	int blocksize, w, h, min_x, min_y, max_x, max_y;
 	int **tiles;
+	float **mass;
+	float **new_mass;
 } map = {"media/maps/world.map", 20, 0, 0};
 
 struct Bg_color {
@@ -93,10 +106,38 @@ void load_map(char *name) {
 		}
 	}
 
+	/* allocate memory for mass array */
+	map.mass = (float **)malloc(map.w * sizeof(float *));
+	if(NULL == map.mass) {
+		printf("not enough free ram (mass)");
+		exit(EXIT_FAILURE);
+	}
+	for(k = 0; k < map.w; k++) {
+		map.mass[k] = (float *)malloc(map.h * sizeof(float));
+		if(NULL == map.mass[k]) {
+			printf("not enough free ram for (mass)row: %d\n", k);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	/* allocate memory for new_mass array */
+	map.new_mass = (float **)malloc(map.w * sizeof(float *));
+	if(NULL == map.new_mass) {
+		printf("not enough free ram (new_mass)");
+		exit(EXIT_FAILURE);
+	}
+	for(k = 0; k < map.w; k++) {
+		map.new_mass[k] = (float *)malloc(map.h * sizeof(float));
+		if(NULL == map.new_mass[k]) {
+			printf("not enough free ram for (new_mass)row: %d\n", k);
+			exit(EXIT_FAILURE);
+		}
+	}
+
 	/* reset position to begin of stream */
 	rewind(mmap);
 
-	/* fill tiles array with values from mapfile */
+	/* fill tiles/mass/new_mass array with values from mapfile */
 	while( (c = fgetc(mmap)) != EOF ) {
 		/* if newline */
 		if(c == 10) {
@@ -121,7 +162,10 @@ void load_map(char *name) {
 					break;
 				default:	c = AIR;		break;
 			}
-			map.tiles[i++][j] = c;
+			map.tiles[i][j] = c;
+			map.mass[i][j] = (c == WATER5 ? 1.0 : 0.0);
+			map.new_mass[i][j] = (c == WATER5 ? 1.0 : 0.0);
+			i++;
 		}
 	}
 	fclose(mmap);
@@ -385,7 +429,8 @@ void place_block(int x, int y, struct Player *p) {
 				solid(cam_x - map.blocksize, cam_y) ||
 				solid(cam_x, cam_y + map.blocksize) ||
 				solid(cam_x, cam_y - map.blocksize))) {
-			map.tiles[dx][dy] = DIRT;
+			map.tiles[dx][dy] = WATER5;
+			map.mass[dx][dy] = MAX_MASS;
 		}
 	}
 }
@@ -457,6 +502,166 @@ void delay(unsigned int frame_limit) {
 	}
 	else {
 		SDL_Delay(frame_limit - ticks);
+	}
+}
+
+/* determines the smallest value of two numbers */
+float min(float i, float j) {
+	float smallest;
+	if(i <= j) {
+		smallest = i;
+	}
+	else {
+		smallest = j;
+	}
+	return smallest;
+}
+
+/* constrains a value to not exceed a maximum and minimum value */
+float constrain(float value, float min, float max) {
+	if(value <= min) {
+		return min;
+	}
+	else if(value > max) {
+		return max;
+	}
+	else {
+		return value;
+	}
+}
+
+/* returns the amount of water that should be in the bottom cell */
+float get_stable_state_below(float total_mass) {
+	if(total_mass <= 1) {
+		return 1;
+	}
+	else if(total_mass < (2 * MAX_MASS) + MAX_COMPRESS ) {
+		return ((MAX_MASS * MAX_MASS) + (total_mass * MAX_COMPRESS)) / (MAX_MASS + MAX_COMPRESS);
+	}
+	else {
+		return (total_mass + MAX_COMPRESS) / 2;
+	}
+}
+
+/* TODO: flowing out of map boundary results in crash. fix it! */
+void simulate_compression(void) {
+	float flow = 0;
+	float remaining_mass;
+	int x, y;
+
+	for(x = 0; x < map.w; x++) {
+		for(y = 0; y < map.h; y++) {
+			/* skip non water blocks */
+			if(map.tiles[x][y] != AIR && map.tiles[x][y] < WATER1) {
+				continue;
+			}
+
+			flow = 0;
+			remaining_mass = map.mass[x][y];
+			if(remaining_mass <= 0) {
+				continue;
+			}
+
+			/* the block below this one */
+			if((map.tiles[x][y+1] == AIR) || (map.tiles[x][y+1] >= WATER1)) {
+				flow = get_stable_state_below(remaining_mass + map.mass[x][y+1]) - map.mass[x][y+1];
+				if(flow > MIN_FLOW) {
+					flow *= 0.5; /* leads to smoother flow */
+				}
+				flow = constrain(flow, 0, min(MAX_SPEED, remaining_mass));
+
+				map.new_mass[x][y] -= flow;
+				map.new_mass[x][y+1] += flow;
+				remaining_mass -= flow;
+			}
+
+			if(remaining_mass <= 0) {
+				continue;
+			}
+
+			/* block left of this one */
+			if((map.tiles[x-1][y] == AIR) || (map.tiles[x-1][y] >= WATER1)) {
+				/* equalize the amount of water in this block and it's neighbour */
+				flow = (map.mass[x][y] - map.mass[x-1][y]) / 4;
+				if(flow > MIN_FLOW) {
+					flow *= 0.5;
+				}
+				flow = constrain(flow, 0, remaining_mass);
+
+				map.new_mass[x][y] -= flow;
+				map.new_mass[x-1][y] += flow;
+				remaining_mass -= flow;
+			}
+
+			if(remaining_mass <= 0) {
+				continue;
+			}
+
+			/* block right of this one */
+			if((map.tiles[x+1][y] == AIR) || (map.tiles[x+1][y] >= WATER1)) {
+				/* equalize the amount of water in this block and it's neighbour */
+				flow = (map.mass[x][y] - map.mass[x+1][y]) / 4;
+				if(flow > MIN_FLOW) {
+					flow *= 0.5;
+				}
+				flow = constrain(flow, 0, remaining_mass);
+
+				map.new_mass[x][y] -= flow;
+				map.new_mass[x+1][y] += flow;
+				remaining_mass -= flow;
+			}
+
+			if(remaining_mass <= 0) {
+				continue;
+			}
+
+			/* up. only compressed water flows upwards */
+			if((map.tiles[x][y-1] == AIR) || (map.tiles[x][y-1] >= WATER1)) {
+				flow = remaining_mass - get_stable_state_below(remaining_mass + map.mass[x][y-1]);
+				if(flow > MIN_FLOW) {
+					flow *= 0.5;
+				}
+				flow = constrain(flow, 0, min(MAX_SPEED, remaining_mass));
+
+				map.new_mass[x][y] -= flow;
+				map.new_mass[x][y-1] += flow;
+				remaining_mass -= flow;
+			}
+		}
+	}
+	/* copy the new mass values to the mass array */
+	for(x = 0; x < map.w; x++) {
+		for(y = 0; y < map.h; y++) {
+			map.mass[x][y] = map.new_mass[x][y];
+		}
+	}
+
+	for(x = 0; x < map.w; x++) {
+		for(y = 0; y < map.h; y++) {
+			/* skip ground blocks */
+			if(map.tiles[x][y] != AIR && map.tiles[x][y] < WATER1) {
+				continue;
+			}
+			/* Flag/unflag water blocks */
+			if ((map.mass[x][y] >= MIN_MASS) && (map.mass[x][y] < water2_mass)) {
+				map.tiles[x][y] = WATER1;
+			}
+			else if ((map.mass[x][y] >= water2_mass) && (map.mass[x][y] < water3_mass)) {
+				map.tiles[x][y] = WATER2;
+			}
+			else if ((map.mass[x][y] >= water3_mass) && (map.mass[x][y] < water4_mass)) {
+				map.tiles[x][y] = WATER3;
+			}
+			else if ((map.mass[x][y] >= water4_mass) && (map.mass[x][y] < water5_mass)) {
+				map.tiles[x][y] = WATER4;
+			}
+			else if (map.mass[x][y] >= water5_mass) {
+				map.tiles[x][y] = WATER5;
+			}
+			else {
+				map.tiles[x][y] = AIR;
+			}
+		}
 	}
 }
 
@@ -551,18 +756,22 @@ int main(void) {
 			}
 		}
 		move_player(&player); // and camera
-
+		simulate_compression();
 		draw(screen, mouse_x, mouse_y, &player);
 
 		delay(frame_limit);
 		frame_limit = SDL_GetTicks() + (1000/60);
 	}
 
-	/* free tiles array in reverse order */
+	/* free tiles/mass/new_mass array in reverse order */
 	for(i = 0; i < map.h; i++) {
 		free(map.tiles[i]);
+		free(map.mass[i]);
+		free(map.new_mass[i]);
 	}
 	free(map.tiles);
+	free(map.mass);
+	free(map.new_mass);
 
 	SDL_FreeSurface(tileset);
 	SDL_FreeSurface(player_image);
