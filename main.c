@@ -385,11 +385,7 @@ void place_block(int x, int y, struct Player *p) {
 				solid(cam_x - map.blocksize, cam_y) ||
 				solid(cam_x, cam_y + map.blocksize) ||
 				solid(cam_x, cam_y - map.blocksize))) {
-			int tile = map.tiles[dx][dy];
-			/* if tile is air or any water block */
-			if((tile == AIR) | ((tile >= WATER1) & (tile <= WATER5))) {
-				map.tiles[dx][dy] = DIRT;
-			}
+			map.tiles[dx][dy] = DIRT;
 		}
 	}
 }
