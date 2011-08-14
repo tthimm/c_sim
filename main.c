@@ -19,19 +19,20 @@
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
 #define GRAVITY 0.8
-#define PLAYER_SPEED 3
+#define PLAYER_SPEED 4
 #define MAX_FALL_SPEED 20
+#define SCROLL_SPEED PLAYER_SPEED
 
 /* tile index  -1   0     20     40    60     80      100     120     140     160*/
 enum blocks { AIR, DIRT, GRASS, SAND, STONE, WATER1, WATER2, WATER3, WATER4, WATER5 };
 
-struct map {
+struct Map {
 	char *filename;
-	int blocksize, w, h;
+	int blocksize, w, h, min_x, min_y, max_x, max_y;
 	int **tiles;
 } map = {"media/maps/world.map", 20, 0, 0};
 
-struct bg_color {
+struct Bg_color {
 	int r;
 	int g;
 	int b;
@@ -92,7 +93,7 @@ void load_map(char *name) {
 		}
 	}
 
-	/* set position to begin of stream */
+	/* reset position to begin of stream */
 	rewind(mmap);
 
 	/* fill tiles array with values from mapfile */
@@ -124,6 +125,11 @@ void load_map(char *name) {
 		}
 	}
 	fclose(mmap);
+
+	/* set min and max scroll position of the map */
+	map.min_x = map.min_y = 0;
+	map.max_x = map.w * map.blocksize;
+	map.max_y = map.h * map.blocksize;
 }
 
 /* blocks are solid, water and air aren't */
@@ -168,8 +174,8 @@ void on_ground(struct Player *p) {
 	}
 }
 
-/* set background color */
-void set_bg_color(SDL_Surface *scr) {
+/* draw background color */
+void draw_background(SDL_Surface *scr) {
 	SDL_Rect dst;
 	dst.x = 0;
 	dst.y = 0;
@@ -190,18 +196,8 @@ void load_tileset(void) {
 	SDL_FreeSurface(temp);
 }
 
-/* draw background for deleted and transparent tiles */
-void draw_dirty_rect(SDL_Surface *screen, int x, int y) {
-	SDL_Rect dirty_rect;
-	dirty_rect.x = (x/map.blocksize)*map.blocksize;
-	dirty_rect.y = (y/map.blocksize)*map.blocksize;
-	dirty_rect.w = map.blocksize;
-	dirty_rect.h = map.blocksize;
-	SDL_FillRect(screen, &dirty_rect, SDL_MapRGB(screen->format, bg.r, bg.g, bg.b));
-}
-
 /* draw the tile */
-void really_draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
+void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
 	SDL_Rect src, dst;
 	src.x = tile_x;
 	src.y = 0;
@@ -215,31 +211,27 @@ void really_draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
 	SDL_BlitSurface(tileset, &src, screen, &dst);
 }
 
-/* sometimes we can draw directly and sometimes we must draw the dirty rect first */
-void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
-	/* AIR tile */
-	if(tile_x == -20) {
-		draw_dirty_rect(screen, x, y);
-	}
-	/* transparent WATER tiles */
-	else if((tile_x >= 80) & (tile_x <= 140)) {
-		draw_dirty_rect(screen, x, y);
-		really_draw_tile(screen, x, y, tile_x);
-	}
-	/* any other tiles */
-	else {
-		really_draw_tile(screen, x, y, tile_x);
-	}
-}
-
 /* iterate through tiles array and draw tiles */
 void draw_all_tiles(SDL_Surface *screen) {
-	int i, j, tileset_index;
-	for(i = 0; i < map.w; i++) {
-		for(j = 0; j < map.h; j++) {
-			tileset_index = map.tiles[i][j] - 1;
-			draw_tile(screen, i * map.blocksize, j * map.blocksize, tileset_index * map.blocksize);
+	int x, y, tileset_index;
+	int x1, x2, y1, y2, map_x, map_y;
+
+	map_x = map.min_x / map.blocksize;
+	x1 = (map.min_x % map.blocksize) * -1;
+	x2 = x1 + SCREEN_WIDTH + (x1 == 0 ? 0 : map.blocksize);
+
+	map_y = map.min_y / map.blocksize;
+	y1 = (map.min_y % map.blocksize) * -1;
+	y2 = y1 + SCREEN_HEIGHT + (y1 == 0 ? 0 : map.blocksize);
+
+	for(y = y1; y < y2; y += map.blocksize) {
+		map_x = map.min_x / map.blocksize;
+		for(x = x1; x < x2; x += map.blocksize) {
+			tileset_index = map.tiles[map_x][map_y] - 1;
+			draw_tile(screen, x, y, tileset_index * map.blocksize);
+			map_x++;
 		}
+		map_y++;
 	}
 }
 
@@ -302,7 +294,26 @@ void check_against_map(struct Player *p) {
 			}
 		}
 	}
+}
 
+void center_camera(struct Player *p) {
+	map.min_x = p->x - (SCREEN_WIDTH / 2);
+	if(map.min_x < 0) {
+		map.min_x = 0;
+	}
+
+	if(map.min_x + SCREEN_WIDTH >= map.max_x) {
+		map.min_x = map.max_x - SCREEN_WIDTH;
+	}
+
+	map.min_y = p->y - (SCREEN_HEIGHT / 2);
+	if(map.min_y < 0) {
+		map.min_y = 0;
+	}
+
+	if(map.min_y + SCREEN_HEIGHT >= map.max_y) {
+		map.min_y = map.max_y - SCREEN_HEIGHT;
+	}
 }
 
 void move_player(struct Player *p) {
@@ -316,7 +327,8 @@ void move_player(struct Player *p) {
 	if(input.left == 1) {
 		p->vx -= PLAYER_SPEED;
 	}
-	else if(input.right == 1) {
+
+	if(input.right == 1) {
 		p->vx += PLAYER_SPEED;
 	}
 
@@ -328,6 +340,7 @@ void move_player(struct Player *p) {
 
 	input.jump = 0;
 	check_against_map(p);
+	center_camera(p);
 }
 
 void draw_player(SDL_Surface *screen, struct Player *p) {
@@ -337,8 +350,8 @@ void draw_player(SDL_Surface *screen, struct Player *p) {
 	src.w = p->w;
 	src.h = p->h;
 
-	dst.x = p->x;
-	dst.y = p->y;
+	dst.x = p->x - map.min_x;
+	dst.y = p->y - map.min_y;
 	dst.w = p->w;
 	dst.h = p->h;
 	SDL_BlitSurface(player_image, &src, screen, &dst);
@@ -346,25 +359,24 @@ void draw_player(SDL_Surface *screen, struct Player *p) {
 
 /* destroy block */
 void destroy_block(SDL_Surface *scr, int x, int y) {
-	int dx = x/map.blocksize;
-	int dy = y/map.blocksize;
+	int dx = (x + map.min_x)/map.blocksize;
+	int dy = (y + map.min_y)/map.blocksize;
 	if((dx < map.w) && (dy < map.h)) {
 		int tile = map.tiles[dx][dy];
 
 		/* if tile is not air and not water */
 		if((tile != AIR)) {/* & ((tile < WATER1) | (tile > WATER5))) {*/
 			map.tiles[dx][dy] = AIR;
-			draw_dirty_rect(scr, x, y);
 		}
 	}
 }
 
 /* place block if there is enough room */
 void place_block(int x, int y, struct Player *p) {
-	int dx = x/map.blocksize;
-	int dy = y/map.blocksize;
-	int player_x = p->x/map.blocksize;
-	int player_y = p->y/map.blocksize;
+	int dx = (x + map.min_x)/map.blocksize;
+	int dy = (y + map.min_y)/map.blocksize;
+	int player_x = (p->x + map.min_x)/map.blocksize;
+	int player_y = (p->y + map.min_y)/map.blocksize;
 	if((dx < map.w) && (dy < map.h) && not_player_position(dx, dy, p) ) {
 		int tile = map.tiles[dx][dy];
 		/* if tile is air or any water block */
@@ -377,12 +389,12 @@ void place_block(int x, int y, struct Player *p) {
 /* returns 1 if click position is not player position */
 int not_player_position(int x, int y, struct Player *p) {
 	int x1, x2, x3, y1, y2, y3;
-	x1 = p->x / map.blocksize;
-	x2 = (p->x + p->w / 2) / map.blocksize;
-	x3 = (p->x + p->w - 1) / map.blocksize;
-	y1 = p->y / map.blocksize;
-	y2 = (p->y + p->h / 2) / map.blocksize;
-	y3 = (p->y + p->h - 1) / map.blocksize;
+	x1 = (p->x) / map.blocksize;
+	x2 = ((p->x) + p->w / 2) / map.blocksize;
+	x3 = ((p->x) + p->w - 1) / map.blocksize;
+	y1 = (p->y) / map.blocksize;
+	y2 = ((p->y) + p->h / 2) / map.blocksize;
+	y3 = ((p->y) + p->h - 1) / map.blocksize;
 	if( !((x == x1) && (y == y1)) &&
 			!((x == x2) && (y == y2)) &&
 			!((x == x3) && (y == y3)) ) {
@@ -394,7 +406,7 @@ int not_player_position(int x, int y, struct Player *p) {
 }
 
 void load_cursor(void) {
-	temp = IMG_Load("media/images/cursor20.png");
+	temp = IMG_Load("media/images/cursor_small.png");
 	SDL_SetColorKey(temp, SDL_SRCCOLORKEY, SDL_MapRGB(temp->format, 255, 0, 0));
 	SDL_SetAlpha(temp, SDL_SRCALPHA, 100);
 	cursor = SDL_DisplayFormat(temp);
@@ -412,14 +424,15 @@ void draw_cursor(SDL_Surface *screen, int x, int y) {
 	src.w = map.blocksize;
 	src.h = map.blocksize;
 
-	dst.x = (x/map.blocksize)*map.blocksize;
-	dst.y = (y/map.blocksize)*map.blocksize;
+	dst.x = x;//(x/map.blocksize)*map.blocksize;
+	dst.y = y;//(y/map.blocksize)*map.blocksize;
 	dst.w = map.blocksize;
 	dst.h = map.blocksize;
 	SDL_BlitSurface(cursor, &src, screen, &dst);
 }
 
 void draw(SDL_Surface *screen, int mouse_x, int mouse_y, struct Player *p) {
+	draw_background(screen);
 	draw_all_tiles(screen);
 	draw_player(screen, p);
 	draw_cursor(screen, mouse_x, mouse_y);
@@ -468,9 +481,6 @@ int main(void) {
 
 	/* load the map and fill tiles array */
 	load_map(map.filename);
-
-	/* set bg color */
-	set_bg_color(screen);
 
 	/* load tileset */
 	load_tileset();
@@ -536,7 +546,7 @@ int main(void) {
 					break;
 			}
 		}
-		move_player(&player);
+		move_player(&player); // and camera
 
 		draw(screen, mouse_x, mouse_y, &player);
 
