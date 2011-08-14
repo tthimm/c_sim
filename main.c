@@ -1,7 +1,4 @@
-/* TODO: camera and translate blocks (see libgosu)
- * TODO: player controls
- * TODO: flowing water (see http://w-shadow.com/blog/2009/09/01/simple-fluid-simulation/)
- * TODO: add inventory
+/* TODO: add inventory
  * TODO: add hud
  * TODO: add minerals
  * TODO: add liquids (oil, lava)
