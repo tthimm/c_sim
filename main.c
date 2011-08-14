@@ -373,15 +373,23 @@ void destroy_block(SDL_Surface *scr, int x, int y) {
 
 /* place block if there is enough room */
 void place_block(int x, int y, struct Player *p) {
-	int dx = (x + map.min_x)/map.blocksize;
-	int dy = (y + map.min_y)/map.blocksize;
+	int cam_x = x + map.min_x;
+	int cam_y = y + map.min_y;
+	int dx = cam_x/map.blocksize;
+	int dy = cam_y/map.blocksize;
 	int player_x = (p->x + map.min_x)/map.blocksize;
 	int player_y = (p->y + map.min_y)/map.blocksize;
+
 	if((dx < map.w) && (dy < map.h) && not_player_position(dx, dy, p) ) {
-		int tile = map.tiles[dx][dy];
-		/* if tile is air or any water block */
-		if((tile == AIR) | ((tile >= WATER1) & (tile <= WATER5))) {
-			map.tiles[dx][dy] = DIRT;
+		if(!solid(cam_x, cam_y) && (solid(cam_x + map.blocksize, cam_y) ||
+				solid(cam_x - map.blocksize, cam_y) ||
+				solid(cam_x, cam_y + map.blocksize) ||
+				solid(cam_x, cam_y - map.blocksize))) {
+			int tile = map.tiles[dx][dy];
+			/* if tile is air or any water block */
+			if((tile == AIR) | ((tile >= WATER1) & (tile <= WATER5))) {
+				map.tiles[dx][dy] = DIRT;
+			}
 		}
 	}
 }
