@@ -25,7 +25,7 @@
 #define MIN_MASS 0.0001
 #define MAX_SPEED 1 /* max units of water moved out of one block to another, per timestep */
 #define MIN_FLOW 0.01
-#define water1_mass 0.0001
+#define water1_mass 0.0051
 #define water2_mass 0.2001
 #define water3_mass 0.4001
 #define water4_mass 0.6001
@@ -426,8 +426,10 @@ void place_block(int x, int y, struct Player *p) {
 				solid(cam_x - map.blocksize, cam_y) ||
 				solid(cam_x, cam_y + map.blocksize) ||
 				solid(cam_x, cam_y - map.blocksize))) {
-			map.tiles[dx][dy] = WATER5;
-			map.mass[dx][dy] = MAX_MASS;
+			map.tiles[dx][dy] = DIRT;
+			map.mass[dx][dy] = 0;
+			map.new_mass[dx][dy] = 0;
+			//map.mass[dx][dy] = MAX_MASS;
 		}
 	}
 }
@@ -540,7 +542,6 @@ float get_stable_state_below(float total_mass) {
 	}
 }
 
-/* TODO: flowing out of map boundary results in crash. fix it! */
 void simulate_compression(void) {
 	float flow = 0;
 	float remaining_mass;
@@ -560,16 +561,18 @@ void simulate_compression(void) {
 			}
 
 			/* the block below this one */
-			if((map.tiles[x][y+1] == AIR) || (map.tiles[x][y+1] >= WATER1)) {
-				flow = get_stable_state_below(remaining_mass + map.mass[x][y+1]) - map.mass[x][y+1];
-				if(flow > MIN_FLOW) {
-					flow *= 0.5; /* leads to smoother flow */
-				}
-				flow = constrain(flow, 0, min(MAX_SPEED, remaining_mass));
+			if(y+1 < map.h) {
+				if((map.tiles[x][y+1] == AIR) || (map.tiles[x][y+1] >= WATER1)) {
+					flow = get_stable_state_below(remaining_mass + map.mass[x][y+1]) - map.mass[x][y+1];
+					if(flow > MIN_FLOW) {
+						flow *= 0.5; /* leads to smoother flow */
+					}
+					flow = constrain(flow, 0, min(MAX_SPEED, remaining_mass));
 
-				map.new_mass[x][y] -= flow;
-				map.new_mass[x][y+1] += flow;
-				remaining_mass -= flow;
+					map.new_mass[x][y] -= flow;
+					map.new_mass[x][y+1] += flow;
+					remaining_mass -= flow;
+				}
 			}
 
 			if(remaining_mass <= 0) {
@@ -577,17 +580,19 @@ void simulate_compression(void) {
 			}
 
 			/* block left of this one */
-			if((map.tiles[x-1][y] == AIR) || (map.tiles[x-1][y] >= WATER1)) {
-				/* equalize the amount of water in this block and it's neighbour */
-				flow = (map.mass[x][y] - map.mass[x-1][y]) / 4;
-				if(flow > MIN_FLOW) {
-					flow *= 0.5;
-				}
-				flow = constrain(flow, 0, remaining_mass);
+			if(x-1 >= 0) {
+				if((map.tiles[x-1][y] == AIR) || (map.tiles[x-1][y] >= WATER1)) {
+					/* equalize the amount of water in this block and it's neighbour */
+					flow = (map.mass[x][y] - map.mass[x-1][y]) / 4;
+					if(flow > MIN_FLOW) {
+						flow *= 0.5;
+					}
+					flow = constrain(flow, 0, remaining_mass);
 
-				map.new_mass[x][y] -= flow;
-				map.new_mass[x-1][y] += flow;
-				remaining_mass -= flow;
+					map.new_mass[x][y] -= flow;
+					map.new_mass[x-1][y] += flow;
+					remaining_mass -= flow;
+				}
 			}
 
 			if(remaining_mass <= 0) {
@@ -595,17 +600,19 @@ void simulate_compression(void) {
 			}
 
 			/* block right of this one */
-			if((map.tiles[x+1][y] == AIR) || (map.tiles[x+1][y] >= WATER1)) {
-				/* equalize the amount of water in this block and it's neighbour */
-				flow = (map.mass[x][y] - map.mass[x+1][y]) / 4;
-				if(flow > MIN_FLOW) {
-					flow *= 0.5;
-				}
-				flow = constrain(flow, 0, remaining_mass);
+			if(x + 1 < map.w) {
+				if((map.tiles[x+1][y] == AIR) || (map.tiles[x+1][y] >= WATER1)) {
+					/* equalize the amount of water in this block and it's neighbour */
+					flow = (map.mass[x][y] - map.mass[x+1][y]) / 4;
+					if(flow > MIN_FLOW) {
+						flow *= 0.5;
+					}
+					flow = constrain(flow, 0, remaining_mass);
 
-				map.new_mass[x][y] -= flow;
-				map.new_mass[x+1][y] += flow;
-				remaining_mass -= flow;
+					map.new_mass[x][y] -= flow;
+					map.new_mass[x+1][y] += flow;
+					remaining_mass -= flow;
+				}
 			}
 
 			if(remaining_mass <= 0) {
@@ -613,16 +620,18 @@ void simulate_compression(void) {
 			}
 
 			/* up. only compressed water flows upwards */
-			if((map.tiles[x][y-1] == AIR) || (map.tiles[x][y-1] >= WATER1)) {
-				flow = remaining_mass - get_stable_state_below(remaining_mass + map.mass[x][y-1]);
-				if(flow > MIN_FLOW) {
-					flow *= 0.5;
-				}
-				flow = constrain(flow, 0, min(MAX_SPEED, remaining_mass));
+			if(y-1 >= 0) {
+				if((map.tiles[x][y-1] == AIR) || (map.tiles[x][y-1] >= WATER1)) {
+					flow = remaining_mass - get_stable_state_below(remaining_mass + map.mass[x][y-1]);
+					if(flow > MIN_FLOW) {
+						flow *= 0.5;
+					}
+					flow = constrain(flow, 0, min(MAX_SPEED, remaining_mass));
 
-				map.new_mass[x][y] -= flow;
-				map.new_mass[x][y-1] += flow;
-				remaining_mass -= flow;
+					map.new_mass[x][y] -= flow;
+					map.new_mass[x][y-1] += flow;
+					remaining_mass -= flow;
+				}
 			}
 		}
 	}
@@ -640,7 +649,7 @@ void simulate_compression(void) {
 				continue;
 			}
 			/* Flag/unflag water blocks */
-			if ((map.mass[x][y] >= MIN_MASS) && (map.mass[x][y] < water2_mass)) {
+			if ((map.mass[x][y] >= water1_mass) && (map.mass[x][y] < water2_mass)) {
 				map.tiles[x][y] = WATER1;
 			}
 			else if ((map.mass[x][y] >= water2_mass) && (map.mass[x][y] < water3_mass)) {
