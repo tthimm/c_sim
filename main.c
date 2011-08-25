@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <SDL/SDL.h>
-#include "SDL/SDL_image.h"
+#include <SDL/SDL_image.h>
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
@@ -21,15 +21,15 @@
 #define MAX_FALL_SPEED 20
 #define SCROLL_SPEED PLAYER_SPEED
 #define MAX_MASS 1.0
-#define MAX_COMPRESS 0.02
+#define MAX_COMPRESS (MAX_MASS / 50) //0.02
 #define MIN_MASS 0.0001
 #define MAX_SPEED 1 /* max units of water moved out of one block to another, per timestep */
-#define MIN_FLOW 0.01
-#define water1_mass 0.0051
-#define water2_mass 0.2001
-#define water3_mass 0.4001
-#define water4_mass 0.6001
-#define water5_mass 0.8001
+#define MIN_FLOW (MAX_MASS / 100) // 0.01
+#define water1_mass (MAX_MASS * 0.005)
+#define water2_mass (MAX_MASS * 0.2)
+#define water3_mass (MAX_MASS * 0.4)
+#define water4_mass (MAX_MASS * 0.6)
+#define water5_mass (MAX_MASS * 0.8)
 
 /* tile index  -1   0     20     40    60     80      100     120     140     160*/
 enum blocks { AIR, DIRT, GRASS, SAND, STONE, WATER1, WATER2, WATER3, WATER4, WATER5 };
@@ -226,7 +226,7 @@ void draw_background(SDL_Surface *scr) {
 }
 
 void load_tileset(void) {
-	temp = IMG_Load("media/images/tileset20.png");
+	temp = IMG_Load("media/images/tileset20_full.png");
 	SDL_SetColorKey(temp, SDL_SRCCOLORKEY, SDL_MapRGB(temp->format, 255, 0, 0));
 	/*SDL_SetAlpha(tileset, SDL_SRCALPHA, 170);*/
 	tileset = SDL_DisplayFormat(temp);
@@ -531,8 +531,8 @@ float constrain(float value, float min, float max) {
 
 /* returns the amount of water that should be in the bottom cell */
 float get_stable_state_below(float total_mass) {
-	if(total_mass <= 1) {
-		return 1;
+	if(total_mass <= MAX_MASS) {
+		return MAX_MASS;
 	}
 	else if(total_mass < (2 * MAX_MASS) + MAX_COMPRESS ) {
 		return ((MAX_MASS * MAX_MASS) + (total_mass * MAX_COMPRESS)) / (MAX_MASS + MAX_COMPRESS);
@@ -671,7 +671,7 @@ void simulate_compression(void) {
 	}
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
 	SDL_Surface *screen;
 	SDL_Event event;
 	int i, done = 0;
@@ -683,6 +683,7 @@ int main(void) {
 	}
 	atexit(SDL_Quit);
 	screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
+	//screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_FULLSCREEN | SDL_DOUBLEBUF);
 	if(NULL == screen) {
 		printf("Can't set video mode: %s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
@@ -784,3 +785,4 @@ int main(void) {
 	SDL_FreeSurface(cursor);
 	return 0;
 }
+
