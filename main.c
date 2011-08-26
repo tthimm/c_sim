@@ -21,10 +21,10 @@
 #define MAX_FALL_SPEED 20
 #define SCROLL_SPEED PLAYER_SPEED
 #define MAX_MASS 1.0
-#define MAX_COMPRESS (MAX_MASS / 50) //0.02
+#define MAX_COMPRESS 0.02 //(MAX_MASS / 50)
 #define MIN_MASS 0.0001
 #define MAX_SPEED 1 /* max units of water moved out of one block to another, per timestep */
-#define MIN_FLOW (MAX_MASS / 100) // 0.01
+#define MIN_FLOW 0.01 // (MAX_MASS / 100)
 #define water1_mass (MAX_MASS * 0.005)
 #define water2_mass (MAX_MASS * 0.2)
 #define water3_mass (MAX_MASS * 0.4)
@@ -49,12 +49,12 @@ struct Bg_color {
 } bg = {47, 136, 248};
 
 struct Player {
-	int x, y, w, h, on_ground;
+	int x, y, w, h, on_ground, selected;
 	float vx, vy;
-} player = { 0, 0, 18, 18, 1, 0, 0 };
+} player = { 0, 0, 18, 18, 1, 0, 0, 0};
 
 typedef struct Input {
-	int left, right, jump;
+	int left, right, jump, mleft, mright;
 } Input;
 
 SDL_Surface *temp, *tileset, *player_image, *cursor;
@@ -408,6 +408,7 @@ void destroy_block(SDL_Surface *scr, int x, int y) {
 		/* if tile is not air and not water */
 		if((tile != AIR)) {/* & ((tile < WATER1) | (tile > WATER5))) {*/
 			map.tiles[dx][dy] = AIR;
+			map.new_mass[dx][dy] = 0;
 		}
 	}
 }
@@ -422,14 +423,34 @@ void place_block(int x, int y, struct Player *p) {
 	int player_y = (p->y + map.min_y)/map.blocksize;
 
 	if((dx < map.w) && (dy < map.h) && not_player_position(dx, dy, p) ) {
+		/* not solid at new block position, dirt selected &
+		horizontal or vertical adjacent block exists (never place floating blocks) */
 		if(!solid(cam_x, cam_y) && (solid(cam_x + map.blocksize, cam_y) ||
 				solid(cam_x - map.blocksize, cam_y) ||
 				solid(cam_x, cam_y + map.blocksize) ||
 				solid(cam_x, cam_y - map.blocksize))) {
-			map.tiles[dx][dy] = DIRT;
-			map.mass[dx][dy] = 0;
-			map.new_mass[dx][dy] = 0;
-			//map.mass[dx][dy] = MAX_MASS;
+			if(p->selected == 0) {
+				map.tiles[dx][dy] = DIRT;
+				//map.mass[dx][dy] = 0;
+				map.new_mass[dx][dy] = 0;
+			}
+		}
+		/* not solid at new block position and water selected */
+		if(!solid(cam_x, cam_y) && (p->selected == 1)) {
+			map.tiles[dx][dy] = WATER5;
+			map.new_mass[dx][dy] = MAX_MASS;
+		}
+	}
+}
+
+void place_and_destroy_blocks(SDL_Surface *scr, int x, int y, struct Player *p) {
+	// if mouse button is pressed and player moves cursor out of the screen, x and y could be negative
+	if((x > 0) && (y > 0)) {
+		if(input.mleft) {
+			destroy_block(scr, x, y);
+		}
+		if(input.mright) {
+			place_block(x, y, p);
 		}
 	}
 }
@@ -649,7 +670,7 @@ void simulate_compression(void) {
 				continue;
 			}
 			/* Flag/unflag water blocks */
-			if ((map.mass[x][y] >= water1_mass) && (map.mass[x][y] < water2_mass)) {
+			if ((map.mass[x][y] >= MIN_MASS) && (map.mass[x][y] < water2_mass)) {
 				map.tiles[x][y] = WATER1;
 			}
 			else if ((map.mass[x][y] >= water2_mass) && (map.mass[x][y] < water3_mass)) {
@@ -718,10 +739,12 @@ int main(int argc, char *argv[]) {
 				case SDL_MOUSEBUTTONDOWN:
 					switch(event.button.button) {
 						case 1:
-							destroy_block(screen, event.button.x, event.button.y);
+							//destroy_block(screen, event.button.x, event.button.y);
+							input.mleft = 1;
 							break;
 						case 3:
-							place_block(event.button.x, event.button.y, &player);
+							//place_block(event.button.x, event.button.y, &player);
+							input.mright = 1;
 							break;
 						default:
 							break;
@@ -741,6 +764,12 @@ int main(int argc, char *argv[]) {
 						case SDLK_SPACE:
 							input.jump = 1;
 							break;
+						case SDLK_1:
+							player.selected = 0;
+							break;
+						case SDLK_2:
+							player.selected = 1;
+							break;
 						default:
 							break;
 					}
@@ -758,12 +787,26 @@ int main(int argc, char *argv[]) {
 							break;
 					}
 					break;
+
+				case SDL_MOUSEBUTTONUP:
+					switch(event.button.button) {
+						case 1:
+							input.mleft = 0;
+							break;
+						case 3:
+							input.mright = 0;
+							break;
+						default:
+							break;
+					}
+					break;
 				default:
 					break;
 			}
 		}
 		move_player(&player); // and camera
 		simulate_compression();
+		place_and_destroy_blocks(screen, event.button.x, event.button.y, &player);
 		draw(screen, mouse_x, mouse_y, &player);
 
 		delay(frame_limit);
