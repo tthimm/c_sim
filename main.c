@@ -51,7 +51,6 @@ struct Bg_color {
 struct Player {
 	unsigned int x, y, w, h, on_ground, selected;
 	float vx, vy;
-	unsigned int dx, dy;
 } player = { 0, 0, 26, 38, 1, 0, 0, 0};
 
 typedef struct Input {
