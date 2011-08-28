@@ -30,6 +30,7 @@
 #define water3_mass (MAX_MASS * 0.4)
 #define water4_mass (MAX_MASS * 0.6)
 #define water5_mass (MAX_MASS * 0.8)
+#define FLIMIT (1000/60)
 
 /* tile index  -1   0     20     40    60     80      100     120     140     160*/
 enum blocks { AIR, DIRT, GRASS, SAND, STONE, WATER1, WATER2, WATER3, WATER4, WATER5 };
@@ -59,11 +60,9 @@ typedef struct Input {
 
 SDL_Surface *temp, *tileset, *player_image, *cursor;
 Input input;
-int mouse_x = 0;
-int mouse_y = 0;
 
 /* load map file and fill tiles array */
-void load_map(char *name) {
+void load_map(void) {
 	int c, i, j, k;
 	i = j = k = 0;
 	int nRet;
@@ -73,7 +72,7 @@ void load_map(char *name) {
 	*gptr = NULL;
 
 	/* open mapfile */
-	mmap = fopen(name, "r");
+	mmap = fopen(map.filename, "r");
 	if(NULL == mmap) {
 		printf("couldn't load map file\n");
 		exit(EXIT_FAILURE);
@@ -192,11 +191,18 @@ int solid(int x, int y) {
 	}
 }
 
+int player_on_water_tile(struct Player *p) {
+	int tile = map.tiles[p->x/map.blocksize][(p->y + p->h) / map.blocksize - 1];
+	if((tile == WATER1) || (tile == WATER2) || (tile == WATER3) || (tile == WATER4) || (tile == WATER5)) {
+			return 1;
+		}
+	else {
+		return 0;
+	}
+}
+
 int player_speed(struct Player *p) {
-	int dx = p->x/map.blocksize;
-	int dy = (p->y + p->h) / map.blocksize - 1;
-	if((map.tiles[dx][dy] == WATER1) || (map.tiles[dx][dy] == WATER2) || (map.tiles[dx][dy] == WATER3) ||
-			(map.tiles[dx][dy] == WATER4) || (map.tiles[dx][dy] == WATER5)) {
+	if(player_on_water_tile(p)) {
 		return PLAYER_SPEED/2;
 	}
 	else {
@@ -205,10 +211,7 @@ int player_speed(struct Player *p) {
 }
 
 int player_fall_speed(struct Player *p) {
-	int dx = p->x/map.blocksize;
-	int dy = (p->y + p->h) / map.blocksize - 1;
-	if((map.tiles[dx][dy] == WATER1) || (map.tiles[dx][dy] == WATER2) || (map.tiles[dx][dy] == WATER3) ||
-			(map.tiles[dx][dy] == WATER4) || (map.tiles[dx][dy] == WATER5)) {
+	if(player_on_water_tile(p)) {
 		return MAX_FALL_SPEED/5;
 	}
 	else {
@@ -217,7 +220,6 @@ int player_fall_speed(struct Player *p) {
 }
 
 int not_solid_above(struct Player *p) {
-
 	if((!solid(p->x, p->y - 1)) &&
 			(!solid(p->x + (p->w / 2), p->y - 1)) &&
 			(!solid(p->x + (p->w - 1), p->y - 1))) {
@@ -511,21 +513,21 @@ void load_cursor(void) {
 	SDL_FreeSurface(temp);
 }
 
-void draw_cursor(SDL_Surface *screen, int x, int y) {
+void draw_cursor(SDL_Surface *screen, int *x, int *y) {
 	SDL_Rect src, dst;
 	src.x = 0;
 	src.y = 0;
 	src.w = map.blocksize;
 	src.h = map.blocksize;
 
-	dst.x = x;//(x/map.blocksize)*map.blocksize;
-	dst.y = y;//(y/map.blocksize)*map.blocksize;
+	dst.x = *x;
+	dst.y = *y;
 	dst.w = map.blocksize;
 	dst.h = map.blocksize;
 	SDL_BlitSurface(cursor, &src, screen, &dst);
 }
 
-void draw(SDL_Surface *screen, int mouse_x, int mouse_y, struct Player *p) {
+void draw(SDL_Surface *screen, int *mouse_x, int *mouse_y, struct Player *p) {
 	draw_background(screen);
 	draw_all_tiles(screen);
 	draw_player(screen, p);
@@ -535,18 +537,18 @@ void draw(SDL_Surface *screen, int mouse_x, int mouse_y, struct Player *p) {
 	SDL_Delay(1);
 }
 
-void delay(unsigned int frame_limit) {
+void delay(unsigned int *frame_limit) {
 	unsigned int ticks = SDL_GetTicks();
 
-	if (frame_limit < ticks) {
+	if (*frame_limit < ticks) {
 		return;
 	}
 
-	if (frame_limit > ticks + (1000/60)) {
-		SDL_Delay((1000/60));
+	if (*frame_limit > ticks + FLIMIT) {
+		SDL_Delay(FLIMIT);
 	}
 	else {
-		SDL_Delay(frame_limit - ticks);
+		SDL_Delay(*frame_limit - ticks);
 	}
 }
 
@@ -720,8 +722,13 @@ void simulate_compression(void) {
 int main(int argc, char *argv[]) {
 	SDL_Surface *screen;
 	SDL_Event event;
-	int i, done = 0;
-	unsigned int frame_limit = SDL_GetTicks() + (1000/60);
+	int i, done = 0, mouse_x = 0, mouse_y = 0;
+	unsigned int frames = SDL_GetTicks() + FLIMIT;
+	unsigned int *frame_limit;
+	frame_limit = &frames;
+	int *mouse_x_ptr, *mouse_y_ptr;
+	mouse_x_ptr = &mouse_x;
+	mouse_y_ptr = &mouse_y;
 
 	if(SDL_Init(SDL_INIT_VIDEO) == -1) {
 		printf("Can't initialize SDL: %s\n", SDL_GetError());
@@ -742,7 +749,7 @@ int main(int argc, char *argv[]) {
 	load_cursor();
 
 	/* load the map and fill tiles array */
-	load_map(map.filename);
+	load_map();
 
 	/* load tileset */
 	load_tileset();
@@ -758,8 +765,8 @@ int main(int argc, char *argv[]) {
 					done = 1;
 					break;
 				case SDL_MOUSEMOTION:
-					mouse_x = event.motion.x;
-					mouse_y = event.motion.y;
+					*mouse_x_ptr = event.motion.x;
+					*mouse_y_ptr = event.motion.y;
 					break;
 				case SDL_MOUSEBUTTONDOWN:
 					switch(event.button.button) {
@@ -831,10 +838,10 @@ int main(int argc, char *argv[]) {
 		simulate_compression();
 		place_and_destroy_blocks(screen, event.button.x, event.button.y, &player);
 		//input.mleft = 0; // uncomment for click once to delete one block
-		draw(screen, mouse_x, mouse_y, &player);
+		draw(screen, mouse_x_ptr, mouse_y_ptr, &player);
 
 		delay(frame_limit);
-		frame_limit = SDL_GetTicks() + (1000/60);
+		*frame_limit = SDL_GetTicks() + FLIMIT;
 	}
 
 	/* free tiles/mass/new_mass array in reverse order */
