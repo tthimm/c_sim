@@ -49,8 +49,9 @@ struct Bg_color {
 } bg = {47, 136, 248};
 
 struct Player {
-	int x, y, w, h, on_ground, selected;
+	unsigned int x, y, w, h, on_ground, selected;
 	float vx, vy;
+	unsigned int dx, dy;
 } player = { 0, 0, 26, 38, 1, 0, 0, 0};
 
 typedef struct Input {
@@ -250,7 +251,7 @@ void draw_background(SDL_Surface *scr) {
 }
 
 void load_tileset(void) {
-	temp = IMG_Load("media/images/tileset20_full.png");
+	temp = IMG_Load("media/images/tileset_full.png");
 	SDL_SetColorKey(temp, SDL_SRCCOLORKEY, SDL_MapRGB(temp->format, 255, 0, 0));
 	/*SDL_SetAlpha(tileset, SDL_SRCALPHA, 170);*/
 	tileset = SDL_DisplayFormat(temp);
@@ -445,8 +446,6 @@ void place_block(int x, int y, struct Player *p) {
 	int cam_y = y + map.min_y;
 	int dx = cam_x/map.blocksize;
 	int dy = cam_y/map.blocksize;
-	int player_x = (p->x + map.min_x)/map.blocksize;
-	int player_y = (p->y + map.min_y)/map.blocksize;
 
 	if((dx < map.w) && (dy < map.h) && not_player_position(dx, dy, p) ) {
 		/* not solid at new block position, dirt selected &
@@ -483,16 +482,17 @@ void place_and_destroy_blocks(SDL_Surface *scr, int x, int y, struct Player *p) 
 
 /* returns 1 if click position is not player position */
 int not_player_position(int x, int y, struct Player *p) {
-	int x1, x2, x3, y1, y2, y3;
-	x1 = (p->x) / map.blocksize;
+	int x1, x2, x3, x4, y1, y2, y3, y4;
+	x1 = p->x / map.blocksize;
 	x2 = ((p->x) + p->w / 2) / map.blocksize;
 	x3 = ((p->x) + p->w - 1) / map.blocksize;
-	y1 = (p->y) / map.blocksize;
+	x4 = x1 + 1;
+	y1 = p->y / map.blocksize;
 	y2 = ((p->y) + p->h / 2) / map.blocksize;
 	y3 = ((p->y) + p->h - 1) / map.blocksize;
-	if( !((x == x1) && (y == y1)) &&
-			!((x == x2) && (y == y2)) &&
-			!((x == x3) && (y == y3)) ) {
+	y4 = y1 + 1;
+	if( !((x == x1) && (y == y1)) && !((x == x2) && (y == y2)) && !((x == x3) && (y == y3)) &&
+			!((x + 1 == x4) && (y == y4)) && !((x == x4) && (y + 1 == y4))) {
 		return 1;
 	}
 	else {
@@ -501,7 +501,7 @@ int not_player_position(int x, int y, struct Player *p) {
 }
 
 void load_cursor(void) {
-	temp = IMG_Load("media/images/cursor_small.png");
+	temp = IMG_Load("media/images/cursor.png");
 	SDL_SetColorKey(temp, SDL_SRCCOLORKEY, SDL_MapRGB(temp->format, 255, 0, 0));
 	SDL_SetAlpha(temp, SDL_SRCALPHA, 100);
 	cursor = SDL_DisplayFormat(temp);
@@ -667,7 +667,7 @@ void simulate_compression(void) {
 			}
 
 			/* up. only compressed water flows upwards */
-			/*if(y-1 >= 0) {
+			if(y-1 >= 0) {
 				if((map.tiles[x][y-1] == AIR) || (map.tiles[x][y-1] >= WATER1)) {
 					flow = remaining_mass - get_stable_state_below(remaining_mass + map.mass[x][y-1]);
 					if(flow > MIN_FLOW) {
@@ -679,7 +679,7 @@ void simulate_compression(void) {
 					map.new_mass[x][y-1] += flow;
 					remaining_mass -= flow;
 				}
-			}*/
+			}
 		}
 	}
 	/* copy the new mass values to the mass array */
