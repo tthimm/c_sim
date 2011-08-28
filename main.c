@@ -51,7 +51,7 @@ struct Bg_color {
 struct Player {
 	int x, y, w, h, on_ground, selected;
 	float vx, vy;
-} player = { 0, 0, 18, 18, 1, 0, 0, 0};
+} player = { 0, 0, 26, 38, 1, 0, 0, 0};
 
 typedef struct Input {
 	int left, right, jump, mleft, mright;
@@ -192,6 +192,30 @@ int solid(int x, int y) {
 	}
 }
 
+int player_speed(struct Player *p) {
+	int dx = p->x/map.blocksize;
+	int dy = (p->y + p->h) / map.blocksize - 1;
+	if((map.tiles[dx][dy] == WATER1) || (map.tiles[dx][dy] == WATER2) || (map.tiles[dx][dy] == WATER3) ||
+			(map.tiles[dx][dy] == WATER4) || (map.tiles[dx][dy] == WATER5)) {
+		return PLAYER_SPEED/2;
+	}
+	else {
+		return PLAYER_SPEED;
+	}
+}
+
+int player_fall_speed(struct Player *p) {
+	int dx = p->x/map.blocksize;
+	int dy = (p->y + p->h) / map.blocksize - 1;
+	if((map.tiles[dx][dy] == WATER1) || (map.tiles[dx][dy] == WATER2) || (map.tiles[dx][dy] == WATER3) ||
+			(map.tiles[dx][dy] == WATER4) || (map.tiles[dx][dy] == WATER5)) {
+		return MAX_FALL_SPEED/5;
+	}
+	else {
+		return MAX_FALL_SPEED;
+	}
+}
+
 int not_solid_above(struct Player *p) {
 
 	if((!solid(p->x, p->y - 1)) &&
@@ -321,7 +345,7 @@ void check_against_map(struct Player *p) {
 	/* move right */
 	if(p->vx > 0) {
 		for(i = 0; i < p->vx; i++) {
-			if((!solid(p->x + p->w, p->y)) && (!solid(p->x + p->w, p->y + p->h - 1))) {
+			if((!solid(p->x + p->w, p->y)) && (!solid(p->x + p->w, p->y + p->h/2 - 1)) && (!solid(p->x + p->w, p->y + p->h - 1))) {
 				p->x += 1;
 			}
 		}
@@ -330,7 +354,7 @@ void check_against_map(struct Player *p) {
 	/* move left */
 	if(p->vx < 0) {
 		for(i = 0; i > p->vx; i--) {
-			if((!solid(p->x - 1, p->y)) && !solid(p->x - 1, p->y + p->h - 1)) {
+			if((!solid(p->x - 1, p->y)) && !solid(p->x - 1, p->y + p->h/2 - 1) && !solid(p->x - 1, p->y + p->h - 1)) {
 				p->x -= 1;
 			}
 		}
@@ -358,24 +382,26 @@ void center_camera(struct Player *p) {
 }
 
 void move_player(struct Player *p) {
+	int fall_speed = player_fall_speed(p);
+	int speed = player_speed(p);
 	p->vx = 0;
 	p->vy += GRAVITY;
 
-	if(p->vy >= MAX_FALL_SPEED) {
-		p->vy = MAX_FALL_SPEED;
+	if(p->vy >= fall_speed) {
+		p->vy = fall_speed;
 	}
 
 	if(input.left == 1) {
-		p->vx -= PLAYER_SPEED;
+		p->vx -= speed;
 	}
 
 	if(input.right == 1) {
-		p->vx += PLAYER_SPEED;
+		p->vx += speed;
 	}
 
 	if(input.jump == 1) {
 		if(p->on_ground) {
-			p->vy = -8;
+			p->vy = -9;
 		}
 	}
 
@@ -641,7 +667,7 @@ void simulate_compression(void) {
 			}
 
 			/* up. only compressed water flows upwards */
-			if(y-1 >= 0) {
+			/*if(y-1 >= 0) {
 				if((map.tiles[x][y-1] == AIR) || (map.tiles[x][y-1] >= WATER1)) {
 					flow = remaining_mass - get_stable_state_below(remaining_mass + map.mass[x][y-1]);
 					if(flow > MIN_FLOW) {
@@ -653,7 +679,7 @@ void simulate_compression(void) {
 					map.new_mass[x][y-1] += flow;
 					remaining_mass -= flow;
 				}
-			}
+			}*/
 		}
 	}
 	/* copy the new mass values to the mass array */
@@ -750,6 +776,20 @@ int main(int argc, char *argv[]) {
 							break;
 					}
 					break;
+				case SDL_MOUSEBUTTONUP:
+					switch(event.button.button) {
+						/* removed because if player falls down, it deletes always the block below the player */
+						case 1:
+							input.mleft = 0;
+							break;
+						case 3:
+							input.mright = 0;
+							break;
+						default:
+							break;
+					}
+					break;
+
 				case SDL_KEYDOWN:
 					switch(event.key.keysym.sym) {
 						case SDLK_ESCAPE:
@@ -774,7 +814,6 @@ int main(int argc, char *argv[]) {
 							break;
 					}
 					break;
-
 				case SDL_KEYUP:
 					switch(event.key.keysym.sym) {
 						case SDLK_a:
@@ -787,26 +826,12 @@ int main(int argc, char *argv[]) {
 							break;
 					}
 					break;
-
-				case SDL_MOUSEBUTTONUP:
-					switch(event.button.button) {
-						case 1:
-							input.mleft = 0;
-							break;
-						case 3:
-							input.mright = 0;
-							break;
-						default:
-							break;
-					}
-					break;
-				default:
-					break;
 			}
 		}
 		move_player(&player); // and camera
 		simulate_compression();
 		place_and_destroy_blocks(screen, event.button.x, event.button.y, &player);
+		//input.mleft = 0; // uncomment for click once to delete one block
 		draw(screen, mouse_x, mouse_y, &player);
 
 		delay(frame_limit);
@@ -828,4 +853,3 @@ int main(int argc, char *argv[]) {
 	SDL_FreeSurface(cursor);
 	return 0;
 }
-
