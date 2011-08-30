@@ -52,7 +52,7 @@ struct Bg_color {
 struct Player {
 	unsigned int x, y, w, h, on_ground, selected;
 	float vx, vy;
-} player = { 0, 0, 26, 38, 1, 0, 0, 0};
+} player = { 0, 0, 26, 38, 1, WATER5, 0, 0};
 
 typedef struct Input {
 	int left, right, jump, mleft, mright;
@@ -448,24 +448,26 @@ void place_block(int x, int y, struct Player *p) {
 	int cam_y = y + map.min_y;
 	int dx = cam_x/map.blocksize;
 	int dy = cam_y/map.blocksize;
+	int mass = p->selected == WATER5 ? MAX_MASS : 0;
 
 	if((dx < map.w) && (dy < map.h) && not_player_position(dx, dy, p) ) {
-		/* not solid at new block position, dirt selected &
+		/* not solid at new block position, dirt, grass or rock selected &
 		horizontal or vertical adjacent block exists (never place floating blocks) */
+
 		if(!solid(cam_x, cam_y) && (solid(cam_x + map.blocksize, cam_y) ||
 				solid(cam_x - map.blocksize, cam_y) ||
 				solid(cam_x, cam_y + map.blocksize) ||
 				solid(cam_x, cam_y - map.blocksize))) {
-			if(p->selected == 0) {
-				map.tiles[dx][dy] = DIRT;
-				//map.mass[dx][dy] = 0;
-				map.new_mass[dx][dy] = 0;
+			if((p->selected == DIRT) || (p->selected == GRASS) || (p->selected == ROCK)) {
+				map.tiles[dx][dy] = p->selected;
+				map.new_mass[dx][dy] = mass;
 			}
 		}
-		/* not solid at new block position and water selected */
-		if(!solid(cam_x, cam_y) && (p->selected == 1)) {
-			map.tiles[dx][dy] = WATER5;
-			map.new_mass[dx][dy] = MAX_MASS;
+
+		/* not solid at new block position and water, sand or oil selected */
+		if(!solid(cam_x, cam_y) && ((p->selected == WATER5) || (p->selected == SAND) || (p->selected == OIL))) {
+			map.tiles[dx][dy] = p->selected;
+			map.new_mass[dx][dy] = mass;
 		}
 	}
 }
@@ -812,10 +814,28 @@ int main(int argc, char *argv[]) {
 							input.jump = 1;
 							break;
 						case SDLK_1:
-							player.selected = 0;
+							player.selected = DIRT;
+							SDL_WM_SetCaption("DIRT", NULL);
 							break;
 						case SDLK_2:
-							player.selected = 1;
+							player.selected = GRASS;
+							SDL_WM_SetCaption("GRASS", NULL);
+							break;
+						case SDLK_3:
+							player.selected = SAND;
+							SDL_WM_SetCaption("SAND", NULL);
+							break;
+						case SDLK_4:
+							player.selected = ROCK;
+							SDL_WM_SetCaption("ROCK", NULL);
+							break;
+						case SDLK_5:
+							player.selected = WATER5;
+							SDL_WM_SetCaption("WATER", NULL);
+							break;
+						case SDLK_6:
+							player.selected = OIL;
+							SDL_WM_SetCaption("OIL", NULL);
 							break;
 						default:
 							break;
