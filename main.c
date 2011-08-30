@@ -32,8 +32,8 @@
 #define water5_mass (MAX_MASS * 0.8)
 #define FLIMIT (1000/60)
 
-/* tile index  -1   0     20     40    60     80      100     120     140     160*/
-enum blocks { AIR, DIRT, GRASS, SAND, STONE, WATER1, WATER2, WATER3, WATER4, WATER5 };
+/* tile index  -1   0     20     40    60     80      100     120     140     160    180 */
+enum blocks { AIR, DIRT, GRASS, SAND, ROCK, WATER1, WATER2, WATER3, WATER4, WATER5, OIL };
 
 struct Map {
 	char *filename;
@@ -143,14 +143,15 @@ void load_map(void) {
 		else {
 			switch(c) {
 				case '#':	c = DIRT;		break;
-				case 'G':	c = GRASS;		break;
-				case 'S':	c = SAND;		break;
-				case 'R':	c = STONE;		break;
+				case 'g':	c = GRASS;		break;
+				case 's':	c = SAND;		break;
+				case 'r':	c = ROCK;		break;
 				case '1':	c = WATER1;		break;
 				case '2':	c = WATER2;		break;
 				case '3':	c = WATER3;		break;
 				case '4':	c = WATER4;		break;
 				case '5':	c = WATER5;		break;
+				case 'o':	c = OIL;		break;
 				case 'p':
 					player.x = i * map.blocksize;
 					player.y = j * map.blocksize;
@@ -590,7 +591,7 @@ float get_stable_state_below(float total_mass) {
 	}
 }
 
-void simulate_compression(void) {
+void simulate_water(void) {
 	float flow = 0;
 	float remaining_mass;
 	int x, y;
@@ -598,7 +599,7 @@ void simulate_compression(void) {
 	for(x = 0; x < map.w; x++) {
 		for(y = 0; y < map.h; y++) {
 			/* skip non water blocks */
-			if(map.tiles[x][y] != AIR && map.tiles[x][y] < WATER1) {
+			if(map.tiles[x][y] != AIR && ((map.tiles[x][y] < WATER1) || (map.tiles[x][y] > WATER5))) {
 				continue;
 			}
 
@@ -693,7 +694,7 @@ void simulate_compression(void) {
 	for(x = 0; x < map.w; x++) {
 		for(y = 0; y < map.h; y++) {
 			/* skip ground blocks */
-			if(map.tiles[x][y] != AIR && map.tiles[x][y] < WATER1) {
+			if(map.tiles[x][y] != AIR && ((map.tiles[x][y] < WATER1) || (map.tiles[x][y] > WATER5))) {
 				continue;
 			}
 			/* Flag/unflag water blocks */
@@ -735,8 +736,8 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 	atexit(SDL_Quit);
-	screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
-	//screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_FULLSCREEN | SDL_DOUBLEBUF);
+	screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_DOUBLEBUF | SDL_HWSURFACE);
+	//screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_DOUBLEBUF | SDL_FULLSCREEN);
 	if(NULL == screen) {
 		printf("Can't set video mode: %s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
@@ -835,7 +836,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		move_player(&player); // and camera
-		simulate_compression();
+		simulate_water();
 		place_and_destroy_blocks(screen, event.button.x, event.button.y, &player);
 		//input.mleft = 0; // uncomment for click once to delete one block
 		draw(screen, mouse_x_ptr, mouse_y_ptr, &player);
