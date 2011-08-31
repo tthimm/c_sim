@@ -751,6 +751,96 @@ void simulate_water(void) {
 	}
 }
 
+int air_tile(int x, int y) {
+	if((x < map.w) && (y < map.h)) {
+		return map.tiles[x][y] == AIR;
+	}
+	else {
+		return 0;
+	}
+}
+
+int sand_tile(int x, int y) {
+	if((x < map.w) && (y < map.h)) {
+		return map.tiles[x][y] == SAND;
+	}
+	else {
+		return 0;
+	}
+}
+
+/* returns 1 if tile is on map and contains water or oil*/
+int water_tile(int x,int y) {
+	int ret = 0;
+	if((x <= map.w) && (y <= map.h)) {
+		switch(map.tiles[x][y]) {
+			case WATER1:
+				ret = 1;
+				break;
+			case WATER2:
+				ret = 1;
+				break;
+			case WATER3:
+				ret = 1;
+				break;
+			case WATER4:
+				ret = 1;
+				break;
+			case WATER5:
+				ret = 1;
+				break;
+			default:
+				break;
+		}
+	}
+	return ret;
+}
+
+/* sand falls down and applies pressure to water */
+void move_sand(void) {
+	int x, y;
+	for(x = map.w - 1; x >= 0 ; x--) {
+		for(y = map.h - 1; y >= 0; y--) {
+			if((y + 1 <= map.h) && (x + 1 <= map.w)) {
+				if(sand_tile(x, y) && air_tile(x, y+1)) {
+					map.tiles[x][y] = AIR;
+					map.tiles[x][y+1] = SAND;
+				}
+
+				/* current is sand and below is water*/
+				if(sand_tile(x, y) && water_tile(x, y+1)) {
+
+					/* left of bottom tile is water or air, flow left*/
+					if((x > 0) && (water_tile(x-1, y+1) || air_tile(x-1, y+1))) {
+						map.new_mass[x-1][y+1] += map.new_mass[x][y+1];
+						map.new_mass[x][y+1] = 0;
+						map.tiles[x][y] = AIR;
+						map.new_mass[x][y] = 0;
+						map.tiles[x][y+1] = SAND;
+					}
+
+					/* right of bottom tile is water or air, flow rightt*/
+					else if(water_tile(x+1, y+1) || air_tile(x+1, y+1)) {
+						map.new_mass[x+1][y+1] += map.new_mass[x][y+1];
+						map.new_mass[x][y+1] = 0;
+						map.tiles[x][y] = AIR;
+						map.new_mass[x][y] = 0;
+						map.tiles[x][y+1] = SAND;
+					}
+
+					/* can't flow left or right, move to top of tile */
+					else {
+						map.tiles[x][y] = map.tiles[x][y+1];		// move below tile one up
+						map.new_mass[x][y] = map.new_mass[x][y+1];	// set mass to mass of below tile
+						map.tiles[x][y+1] = SAND;					// move sand tile one down
+						map.new_mass[x][y+1] = 0;					// reset sand mass
+					}
+				}
+			}
+		}
+	}
+}
+
 int main(int argc, char *argv[]) {
 	SDL_Surface *screen, *text;
 	SDL_Event event;
@@ -889,9 +979,11 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		move_player(&player); // and camera
+		move_sand();
 		simulate_water();
 		place_and_destroy_blocks(screen, event.button.x, event.button.y, &player);
-		//input.mleft = 0; // uncomment for click once to delete one block
+		input.mleft = 0; // uncomment for click once to delete one block
+		input.mright = 0; // uncomment for click once to place one block
 		draw(screen, mouse_x_ptr, mouse_y_ptr, &player, text, font, text_color);
 
 		delay(frame_limit);
