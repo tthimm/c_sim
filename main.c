@@ -13,6 +13,7 @@
 #include <string.h>
 #include <SDL/SDL.h>
 #include <SDL/SDL_image.h>
+#include <SDL/SDL_ttf.h>
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
@@ -173,14 +174,14 @@ void load_map(void) {
 	map.max_y = map.h * map.blocksize;
 }
 
-/* blocks are solid, water and air aren't */
+/* blocks are solid, water, oil and air aren't */
 int solid(int x, int y) {
 	int dx = x/map.blocksize;
 	int dy = y/map.blocksize;
 	if((dx < map.w) && (dy < map.h)) { /* fix for trying to access index out of bounds > */
 		int tile = map.tiles[dx][dy];
 		if( (y < 0) || (x < 0) || (dy >= map.h) || (dx >= map.w) ||
-			((tile != AIR) && (tile < WATER1)) || ((tile != AIR) && (tile > WATER5))) {
+			((tile != AIR) && (tile < WATER1)) || ((tile != AIR) && (tile > OIL))) {
 			return 1;
 		}
 		else {
@@ -192,9 +193,9 @@ int solid(int x, int y) {
 	}
 }
 
-int player_on_water_tile(struct Player *p) {
+int player_on_liquid_tile(struct Player *p) {
 	int tile = map.tiles[p->x/map.blocksize][(p->y + p->h) / map.blocksize - 1];
-	if((tile == WATER1) || (tile == WATER2) || (tile == WATER3) || (tile == WATER4) || (tile == WATER5)) {
+	if((tile == WATER1) || (tile == WATER2) || (tile == WATER3) || (tile == WATER4) || (tile == WATER5) || (tile == OIL)) {
 			return 1;
 		}
 	else {
@@ -203,7 +204,7 @@ int player_on_water_tile(struct Player *p) {
 }
 
 int player_speed(struct Player *p) {
-	if(player_on_water_tile(p)) {
+	if(player_on_liquid_tile(p)) {
 		return PLAYER_SPEED/2;
 	}
 	else {
@@ -212,7 +213,7 @@ int player_speed(struct Player *p) {
 }
 
 int player_fall_speed(struct Player *p) {
-	if(player_on_water_tile(p)) {
+	if(player_on_liquid_tile(p)) {
 		return MAX_FALL_SPEED/5;
 	}
 	else {
@@ -530,9 +531,37 @@ void draw_cursor(SDL_Surface *screen, int *x, int *y) {
 	SDL_BlitSurface(cursor, &src, screen, &dst);
 }
 
-void draw(SDL_Surface *screen, int *mouse_x, int *mouse_y, struct Player *p) {
+void draw_text(struct Player *p, SDL_Surface *screen, SDL_Surface *text, TTF_Font *font, SDL_Color color) {
+	SDL_Rect rect = {2, 2, 0, 0};
+	char item[6];
+	switch(p->selected) {
+	case DIRT:
+		strcat(item,"DIRT");
+		break;
+	case GRASS:
+		strcat(item,"GRASS");
+		break;
+	case SAND:
+		strcat(item,"SAND");
+		break;
+	case ROCK:
+		strcat(item,"ROCK");
+		break;
+	case WATER5:
+		strcat(item,"WATER");
+		break;
+	case OIL:
+		strcat(item,"OIL");
+		break;
+	}
+	text = TTF_RenderText_Solid(font, item, color);
+	SDL_BlitSurface(text, NULL, screen, &rect);
+}
+
+void draw(SDL_Surface *screen, int *mouse_x, int *mouse_y, struct Player *p, SDL_Surface *text, TTF_Font *font, SDL_Color color) {
 	draw_background(screen);
 	draw_all_tiles(screen);
+	draw_text(p, screen, text, font, color);
 	draw_player(screen, p);
 	draw_cursor(screen, mouse_x, mouse_y);
 
@@ -723,8 +752,9 @@ void simulate_water(void) {
 }
 
 int main(int argc, char *argv[]) {
-	SDL_Surface *screen;
+	SDL_Surface *screen, *text;
 	SDL_Event event;
+	TTF_Font *font;
 	int i, done = 0, mouse_x = 0, mouse_y = 0;
 	unsigned int frames = SDL_GetTicks() + FLIMIT;
 	unsigned int *frame_limit;
@@ -738,12 +768,16 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 	atexit(SDL_Quit);
+
 	screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_DOUBLEBUF | SDL_HWSURFACE);
 	//screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_DOUBLEBUF | SDL_FULLSCREEN);
 	if(NULL == screen) {
 		printf("Can't set video mode: %s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
 	}
+
+	/* set window title */
+	SDL_WM_SetCaption("2D SIMULATION", NULL);
 
 	/* disable cursor */
 	SDL_ShowCursor(SDL_DISABLE);
@@ -759,6 +793,11 @@ int main(int argc, char *argv[]) {
 
 	/* load player */
 	load_player_image();
+
+	/* setup font */
+	TTF_Init();
+	SDL_Color text_color = {255, 255, 255};
+	font = TTF_OpenFont("media/fonts/LiberationMono-Regular.ttf", 16);
 
 	/* game loop */
 	while(!done) {
@@ -815,27 +854,21 @@ int main(int argc, char *argv[]) {
 							break;
 						case SDLK_1:
 							player.selected = DIRT;
-							SDL_WM_SetCaption("DIRT", NULL);
 							break;
 						case SDLK_2:
 							player.selected = GRASS;
-							SDL_WM_SetCaption("GRASS", NULL);
 							break;
 						case SDLK_3:
 							player.selected = SAND;
-							SDL_WM_SetCaption("SAND", NULL);
 							break;
 						case SDLK_4:
 							player.selected = ROCK;
-							SDL_WM_SetCaption("ROCK", NULL);
 							break;
 						case SDLK_5:
 							player.selected = WATER5;
-							SDL_WM_SetCaption("WATER", NULL);
 							break;
 						case SDLK_6:
 							player.selected = OIL;
-							SDL_WM_SetCaption("OIL", NULL);
 							break;
 						default:
 							break;
@@ -859,7 +892,7 @@ int main(int argc, char *argv[]) {
 		simulate_water();
 		place_and_destroy_blocks(screen, event.button.x, event.button.y, &player);
 		//input.mleft = 0; // uncomment for click once to delete one block
-		draw(screen, mouse_x_ptr, mouse_y_ptr, &player);
+		draw(screen, mouse_x_ptr, mouse_y_ptr, &player, text, font, text_color);
 
 		delay(frame_limit);
 		*frame_limit = SDL_GetTicks() + FLIMIT;
@@ -878,5 +911,6 @@ int main(int argc, char *argv[]) {
 	SDL_FreeSurface(tileset);
 	SDL_FreeSurface(player_image);
 	SDL_FreeSurface(cursor);
+	SDL_FreeSurface(text);
 	return 0;
 }

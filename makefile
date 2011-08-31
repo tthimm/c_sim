@@ -6,8 +6,8 @@
 #	gcc -c main.c `sdl-config --cflags` -lSDL_image
 	
 
-CFLAGS = `sdl-config --cflags` -lSDL_image
-LFLAGS = `sdl-config --libs` -lSDL_image
+CFLAGS = `sdl-config --cflags` -lSDL_image -lSDL_ttf
+LFLAGS = `sdl-config --libs` -lSDL_image -lSDL_ttf
 OBJS   = main.o
 PROG = sim
 CXX = gcc
