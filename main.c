@@ -179,9 +179,8 @@ int solid(int x, int y) {
 	int dx = x/map.blocksize;
 	int dy = y/map.blocksize;
 	if((dx < map.w) && (dy < map.h)) { /* fix for trying to access index out of bounds > */
-		int tile = map.tiles[dx][dy];
 		if( (y < 0) || (x < 0) || (dy >= map.h) || (dx >= map.w) ||
-			((tile != AIR) && (tile < WATER1)) || ((tile != AIR) && (tile > OIL))) {
+				( !air_tile(dx, dy) && !liquid_tile(dx, dy))) {
 			return 1;
 		}
 		else {
@@ -193,11 +192,70 @@ int solid(int x, int y) {
 	}
 }
 
-int player_on_liquid_tile(struct Player *p) {
-	int tile = map.tiles[p->x/map.blocksize][(p->y + p->h) / map.blocksize - 1];
-	if((tile == WATER1) || (tile == WATER2) || (tile == WATER3) || (tile == WATER4) || (tile == WATER5) || (tile == OIL)) {
-			return 1;
+int air_tile(int x, int y) {
+	if((x < map.w) && (y < map.h)) {
+		return map.tiles[x][y] == AIR;
+	}
+	else {
+		return 0;
+	}
+}
+
+/* returns 1 if tile is on map and contains sand */
+int sand_tile(int x, int y) {
+	if((x < map.w) && (y < map.h)) {
+		return map.tiles[x][y] == SAND;
+	}
+	else {
+		return 0;
+	}
+}
+
+/* returns 1 if tile is on map and contains water */
+int water_tile(int x,int y) {
+	int ret = 0;
+	if((x < map.w) && (y < map.h)) {
+		switch(map.tiles[x][y]) {
+			case WATER1:
+				ret = 1;
+				break;
+			case WATER2:
+				ret = 1;
+				break;
+			case WATER3:
+				ret = 1;
+				break;
+			case WATER4:
+				ret = 1;
+				break;
+			case WATER5:
+				ret = 1;
+				break;
+			default:
+				break;
 		}
+	}
+	return ret;
+}
+
+/* returns 1 if tile is on map and contains oil */
+int oil_tile(int x, int y) {
+	if((x < map.w) && (y < map.h)) {
+		return map.tiles[x][y] == OIL;
+	}
+	else {
+		return 0;
+	}
+}
+
+int liquid_tile(int x, int y) {
+	return (water_tile(x, y) || oil_tile(x, y));
+}
+
+int player_on_liquid_tile(struct Player *p) {
+	if(liquid_tile(p->x/map.blocksize, (p->y + p->h) / map.blocksize - 1)) {
+		return 1;
+	}
 	else {
 		return 0;
 	}
@@ -433,10 +491,7 @@ void destroy_block(SDL_Surface *scr, int x, int y) {
 	int dx = (x + map.min_x)/map.blocksize;
 	int dy = (y + map.min_y)/map.blocksize;
 	if((dx < map.w) && (dy < map.h)) {
-		int tile = map.tiles[dx][dy];
-
-		/* if tile is not air and not water */
-		if((tile != AIR)) {/* & ((tile < WATER1) | (tile > WATER5))) {*/
+		if(!air_tile(dx, dy)) {
 			map.tiles[dx][dy] = AIR;
 			map.new_mass[dx][dy] = 0;
 		}
@@ -532,7 +587,7 @@ void draw_cursor(SDL_Surface *screen, int *x, int *y) {
 }
 
 void draw_text(struct Player *p, SDL_Surface *screen, SDL_Surface *text, TTF_Font *font, SDL_Color color) {
-	SDL_Rect rect = {2, 2, 0, 0};
+	SDL_Rect rect = {0, 0, 0, 0};
 	char item[6];
 	switch(p->selected) {
 	case DIRT:
@@ -554,7 +609,8 @@ void draw_text(struct Player *p, SDL_Surface *screen, SDL_Surface *text, TTF_Fon
 		strcat(item,"OIL");
 		break;
 	}
-	text = TTF_RenderText_Solid(font, item, color);
+	SDL_Color bgcolor = {0, 0, 0};
+	text = TTF_RenderText_Shaded(font, item, color, bgcolor);
 	SDL_BlitSurface(text, NULL, screen, &rect);
 }
 
@@ -630,7 +686,7 @@ void simulate_water(void) {
 	for(x = 0; x < map.w; x++) {
 		for(y = 0; y < map.h; y++) {
 			/* skip non water blocks */
-			if(map.tiles[x][y] != AIR && ((map.tiles[x][y] < WATER1) || (map.tiles[x][y] > WATER5))) {
+			if(!air_tile(x, y) && !water_tile(x, y)) {
 				continue;
 			}
 
@@ -642,7 +698,7 @@ void simulate_water(void) {
 
 			/* the block below this one */
 			if(y+1 < map.h) {
-				if((map.tiles[x][y+1] == AIR) || (map.tiles[x][y+1] >= WATER1)) {
+				if(air_tile(x, y+1) || water_tile(x, y+1)) {
 					flow = get_stable_state_below(remaining_mass + map.mass[x][y+1]) - map.mass[x][y+1];
 					if(flow > MIN_FLOW) {
 						flow *= 0.5; /* leads to smoother flow */
@@ -661,7 +717,7 @@ void simulate_water(void) {
 
 			/* block left of this one */
 			if(x-1 >= 0) {
-				if((map.tiles[x-1][y] == AIR) || (map.tiles[x-1][y] >= WATER1)) {
+				if(air_tile(x-1, y) || water_tile(x-1, y)) {
 					/* equalize the amount of water in this block and it's neighbour */
 					flow = (map.mass[x][y] - map.mass[x-1][y]) / 4;
 					if(flow > MIN_FLOW) {
@@ -681,7 +737,7 @@ void simulate_water(void) {
 
 			/* block right of this one */
 			if(x + 1 < map.w) {
-				if((map.tiles[x+1][y] == AIR) || (map.tiles[x+1][y] >= WATER1)) {
+				if(air_tile(x+1, y) || water_tile(x+1, y)) {
 					/* equalize the amount of water in this block and it's neighbour */
 					flow = (map.mass[x][y] - map.mass[x+1][y]) / 4;
 					if(flow > MIN_FLOW) {
@@ -701,7 +757,7 @@ void simulate_water(void) {
 
 			/* up. only compressed water flows upwards */
 			if(y-1 >= 0) {
-				if((map.tiles[x][y-1] == AIR) || (map.tiles[x][y-1] >= WATER1)) {
+				if(air_tile(x, y-1) || water_tile(x, y-1)) {
 					flow = remaining_mass - get_stable_state_below(remaining_mass + map.mass[x][y-1]);
 					if(flow > MIN_FLOW) {
 						flow *= 0.5;
@@ -725,7 +781,7 @@ void simulate_water(void) {
 	for(x = 0; x < map.w; x++) {
 		for(y = 0; y < map.h; y++) {
 			/* skip ground blocks */
-			if(map.tiles[x][y] != AIR && ((map.tiles[x][y] < WATER1) || (map.tiles[x][y] > WATER5))) {
+			if(!air_tile(x, y) && !water_tile(x, y)) {
 				continue;
 			}
 			/* Flag/unflag water blocks */
@@ -749,51 +805,6 @@ void simulate_water(void) {
 			}
 		}
 	}
-}
-
-int air_tile(int x, int y) {
-	if((x < map.w) && (y < map.h)) {
-		return map.tiles[x][y] == AIR;
-	}
-	else {
-		return 0;
-	}
-}
-
-int sand_tile(int x, int y) {
-	if((x < map.w) && (y < map.h)) {
-		return map.tiles[x][y] == SAND;
-	}
-	else {
-		return 0;
-	}
-}
-
-/* returns 1 if tile is on map and contains water or oil*/
-int water_tile(int x,int y) {
-	int ret = 0;
-	if((x <= map.w) && (y <= map.h)) {
-		switch(map.tiles[x][y]) {
-			case WATER1:
-				ret = 1;
-				break;
-			case WATER2:
-				ret = 1;
-				break;
-			case WATER3:
-				ret = 1;
-				break;
-			case WATER4:
-				ret = 1;
-				break;
-			case WATER5:
-				ret = 1;
-				break;
-			default:
-				break;
-		}
-	}
-	return ret;
 }
 
 /* sand falls down and applies pressure to water */
@@ -982,8 +993,8 @@ int main(int argc, char *argv[]) {
 		move_sand();
 		simulate_water();
 		place_and_destroy_blocks(screen, event.button.x, event.button.y, &player);
-		input.mleft = 0; // uncomment for click once to delete one block
-		input.mright = 0; // uncomment for click once to place one block
+		//input.mleft = 0; // uncomment for click once to delete one block
+		//input.mright = 0; // uncomment for click once to place one block
 		draw(screen, mouse_x_ptr, mouse_y_ptr, &player, text, font, text_color);
 
 		delay(frame_limit);
