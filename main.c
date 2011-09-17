@@ -64,6 +64,49 @@ typedef struct Input {
 SDL_Surface *temp, *tileset, *player_image, *cursor;
 Input input;
 
+void save_map(void) {
+	FILE *mmap;
+	int x, y;
+	char tile;
+	int p_x = player.x / map.blocksize, p_y = player.y / map.blocksize;
+
+	/* open mapfile */
+	mmap = fopen(map.filename, "w+");
+	if(NULL == mmap) {
+		printf("couldn't load map file\n");
+		exit(EXIT_FAILURE);
+	}
+
+	/* add the */
+	for(y = 0; y < map.h; y++) {
+		for(x = 0; x < map.w; x++) {
+			switch(map.tiles[x][y]) {
+				case AIR:		tile = '.';	break;
+				case DIRT:		tile = '#';	break;
+				case GRASS:		tile = 'g';	break;
+				case SAND:		tile = 's';	break;
+				case ROCK:		tile = 'r';	break;
+				case WATER1:	tile = '5';	break;
+				case WATER2:	tile = '5';	break;
+				case WATER3:	tile = '5';	break;
+				case WATER4:	tile = '5';	break;
+				case WATER5:	tile = '5';	break;
+				case OIL:		tile = 'o';	break;
+			}
+
+			/* we must store the player position also */
+			if((x == p_x) && (y == p_y)) {
+				tile = 'p';
+			}
+			fprintf(mmap, "%c", tile);
+		}
+		if(y + 1 < map.h) {
+			fprintf(mmap, "\n");
+		}
+	}
+	fclose(mmap);
+}
+
 /* load map file and fill tiles array */
 void load_map(void) {
 	int c, i, j, k;
@@ -630,25 +673,25 @@ void draw_cursor(SDL_Surface *screen, int *x, int *y) {
 
 void draw_text(struct Player *p, SDL_Surface *screen, SDL_Surface *text, TTF_Font *font, SDL_Color color) {
 	SDL_Rect rect = {0, 0, 0, 0};
-	char item[6];
+	char item[8];
 	switch(p->selected) {
 	case DIRT:
-		strcat(item,"DIRT");
+		strcat(item," DIRT ");
 		break;
 	case GRASS:
-		strcat(item,"GRASS");
+		strcat(item," GRASS ");
 		break;
 	case SAND:
-		strcat(item,"SAND");
+		strcat(item," SAND ");
 		break;
 	case ROCK:
-		strcat(item,"ROCK");
+		strcat(item," ROCK ");
 		break;
 	case WATER5:
-		strcat(item,"WATER");
+		strcat(item," WATER ");
 		break;
 	case OIL:
-		strcat(item,"OIL");
+		strcat(item," OIL ");
 		break;
 	}
 	SDL_Color bgcolor = {0, 0, 0};
@@ -656,10 +699,20 @@ void draw_text(struct Player *p, SDL_Surface *screen, SDL_Surface *text, TTF_Fon
 	SDL_BlitSurface(text, NULL, screen, &rect);
 }
 
-void draw(SDL_Surface *screen, int *mouse_x, int *mouse_y, struct Player *p, SDL_Surface *text, TTF_Font *font, SDL_Color color) {
+void draw_save_msg(struct Player *p, SDL_Surface *screen, SDL_Surface *text, TTF_Font *font, SDL_Color color) {
+	SDL_Rect rect = {0, screen->h - TTF_FontHeight(font), 0, 0};
+	SDL_Color bgcolor = {0, 0, 0};
+	text = TTF_RenderText_Shaded(font, " Map saved... ", color, bgcolor);
+	SDL_BlitSurface(text, NULL, screen, &rect);
+}
+
+void draw(SDL_Surface *screen, int *mouse_x, int *mouse_y, struct Player *p, SDL_Surface *text, TTF_Font *font, SDL_Color color, int sv_msg) {
 	draw_background(screen);
 	draw_all_tiles(screen);
 	draw_text(p, screen, text, font, color);
+	if(sv_msg) {
+		draw_save_msg(p, screen, text, font, color);
+	}
 	draw_player(screen, p);
 	draw_cursor(screen, mouse_x, mouse_y);
 
@@ -1011,7 +1064,33 @@ void move_sand(void) {
 	}
 }
 
+Uint32 msg_event(Uint32 interval, void *param) {
+	SDL_Event event;
+	SDL_UserEvent userevent;
+
+	/* init userevent */
+	userevent.type = SDL_USEREVENT;
+	userevent.code = 0;
+	userevent.data1 = NULL;
+	userevent.data2 = NULL;
+
+	/* init a new event */
+	event.type = SDL_USEREVENT;
+	event.user = userevent;
+
+	/* create new event */
+	SDL_PushEvent (&event);
+	/* returning 0 instead of interval, to stop timer */
+	return 0;
+}
+
 int main(int argc, char *argv[]) {
+	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) == -1) {
+		printf("Can't initialize SDL: %s\n", SDL_GetError());
+		exit(EXIT_FAILURE);
+	}
+	atexit(SDL_Quit);
+
 	SDL_Surface *screen, *text;
 	SDL_Event event;
 	TTF_Font *font;
@@ -1022,12 +1101,7 @@ int main(int argc, char *argv[]) {
 	int *mouse_x_ptr, *mouse_y_ptr;
 	mouse_x_ptr = &mouse_x;
 	mouse_y_ptr = &mouse_y;
-
-	if(SDL_Init(SDL_INIT_VIDEO) == -1) {
-		printf("Can't initialize SDL: %s\n", SDL_GetError());
-		exit(EXIT_FAILURE);
-	}
-	atexit(SDL_Quit);
+	int show_save_msg = 0;
 
 	screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_DOUBLEBUF | SDL_HWSURFACE);
 	//screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_DOUBLEBUF | SDL_FULLSCREEN);
@@ -1057,7 +1131,7 @@ int main(int argc, char *argv[]) {
 	/* setup font */
 	TTF_Init();
 	SDL_Color text_color = {255, 255, 255};
-	font = TTF_OpenFont("media/fonts/LiberationMono-Regular.ttf", 16);
+	font = TTF_OpenFont("media/fonts/slkscrb.ttf", 8);
 
 	/* game loop */
 	while(!done) {
@@ -1065,6 +1139,9 @@ int main(int argc, char *argv[]) {
 			switch(event.type) {
 				case SDL_QUIT:
 					done = 1;
+					break;
+				case SDL_USEREVENT:
+					show_save_msg = 0;
 					break;
 				case SDL_MOUSEMOTION:
 					*mouse_x_ptr = event.motion.x;
@@ -1130,6 +1207,11 @@ int main(int argc, char *argv[]) {
 						case SDLK_6:
 							player.selected = OIL;
 							break;
+						case SDLK_F12:
+							save_map();
+							SDL_AddTimer (2000, msg_event, NULL);
+							show_save_msg = 1;
+							break;
 						default:
 							break;
 					}
@@ -1155,7 +1237,7 @@ int main(int argc, char *argv[]) {
 		place_and_destroy_blocks(screen, event.button.x, event.button.y, &player);
 		//input.mleft = 0; // uncomment for click once to delete one block
 		//input.mright = 0; // uncomment for click once to place one block
-		draw(screen, mouse_x_ptr, mouse_y_ptr, &player, text, font, text_color);
+		draw(screen, mouse_x_ptr, mouse_y_ptr, &player, text, font, text_color, show_save_msg);
 
 		delay(frame_limit);
 		*frame_limit = SDL_GetTicks() + FLIMIT;
