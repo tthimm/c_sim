@@ -21,16 +21,8 @@
 #define PLAYER_SPEED 4
 #define MAX_FALL_SPEED 20
 #define SCROLL_SPEED PLAYER_SPEED
-#define MAX_MASS 1.0
-#define MAX_COMPRESS 0.02 //(MAX_MASS / 50)
-#define MIN_MASS 0.0001
-#define MAX_SPEED 1 /* max units of water moved out of one block to another, per timestep */
-#define MIN_FLOW 0.01 // (MAX_MASS / 100)
-#define water1_mass (MAX_MASS * 0.005)
-#define water2_mass (MAX_MASS * 0.2)
-#define water3_mass (MAX_MASS * 0.4)
-#define water4_mass (MAX_MASS * 0.6)
-#define water5_mass (MAX_MASS * 0.8)
+#define MAX_MASS 5
+#define MIN_MASS 1
 #define FLIMIT (1000/60)
 #define SAVE_EVENT (SDL_USEREVENT + 1)
 
@@ -534,17 +526,10 @@ void place_block(int x, int y, struct Player *p) {
 	int dy = cam_y/map.blocksize;
 
 	if((dx < map.w) && (dy < map.h) && not_player_position(dx, dy, p) ) {
-		/* not solid at new block position, dirt, grass or rock selected &
-		horizontal or vertical adjacent block exists (never place floating blocks) */
-
-		if(!solid(cam_x, cam_y) && (solid(cam_x + map.blocksize, cam_y) ||
-				solid(cam_x - map.blocksize, cam_y) ||
-				solid(cam_x, cam_y + map.blocksize) ||
-				solid(cam_x, cam_y - map.blocksize))) {
-			//if((p->selected == DIRT) || (p->selected == GRASS) || (p->selected == ROCK)) {
-				map.tiles[dx][dy] = p->selected;
-				map.new_tiles[dx][dy] = p->selected;
-			//}
+		/* not solid at new block position */
+		if(!solid(cam_x, cam_y)) {
+			map.tiles[dx][dy] = p->selected;
+			map.new_tiles[dx][dy] = p->selected;
 		}
 	}
 }
@@ -693,19 +678,6 @@ float constrain(float value, float min, float max) {
 	}
 	else {
 		return value;
-	}
-}
-
-/* returns the amount of water that should be in the bottom cell */
-float get_stable_state_below(float total_mass) {
-	if(total_mass <= MAX_MASS) {
-		return MAX_MASS;
-	}
-	else if(total_mass < (2 * MAX_MASS) + MAX_COMPRESS ) {
-		return ((MAX_MASS * MAX_MASS) + (total_mass * MAX_COMPRESS)) / (MAX_MASS + MAX_COMPRESS);
-	}
-	else {
-		return (total_mass + MAX_COMPRESS) / 2;
 	}
 }
 
