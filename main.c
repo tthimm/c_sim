@@ -67,7 +67,7 @@ void save_map(void) {
 		exit(EXIT_FAILURE);
 	}
 
-	/* add the */
+	/* store tile symbols to mapfile instead of internal used integers */
 	for(y = 0; y < map.h; y++) {
 		for(x = 0; x < map.w; x++) {
 			switch(map.tiles[x][y]) {
@@ -97,7 +97,7 @@ void save_map(void) {
 	fclose(mmap);
 }
 
-/* load map file and fill tiles array */
+/* load map file and fill tiles/new_tiles array */
 void load_map(void) {
 	int c, i, j, k;
 	i = j = k = 0;
@@ -127,18 +127,18 @@ void load_map(void) {
 	/* allocate memory for tileset array */
 	map.tiles = (int **)malloc(map.w * sizeof(int *));
 	if(NULL == map.tiles) {
-		printf("not enough free ram");
+		printf("not enough free ram (tiles)");
 		exit(EXIT_FAILURE);
 	}
 	for(k = 0; k < map.w; k++) {
 		map.tiles[k] = (int *)malloc(map.h * sizeof(int));
 		if(NULL == map.tiles[k]) {
-			printf("not enough free ram for row: %d\n", k);
+			printf("not enough free ram for (tiles)row: %d\n", k);
 			exit(EXIT_FAILURE);
 		}
 	}
 
-	/* allocate memory for mass array */
+	/* allocate memory for new_tiles array */
 	map.new_tiles = (int **)malloc(map.w * sizeof(int *));
 	if(NULL == map.new_tiles) {
 		printf("not enough free ram (new_tiles)");
@@ -155,7 +155,7 @@ void load_map(void) {
 	/* reset position to begin of stream */
 	rewind(mmap);
 
-	/* fill tiles/mass/new_mass array with values from mapfile */
+	/* fill tiles/new_tiles array with values from mapfile */
 	while( (c = fgetc(mmap)) != EOF ) {
 		/* if newline */
 		if(c == 10) {
@@ -164,6 +164,7 @@ void load_map(void) {
 		}
 		else {
 			switch(c) {
+				case '.':	c = AIR;		break;
 				case '#':	c = DIRT;		break;
 				case 'g':	c = GRASS;		break;
 				case 's':	c = SAND;		break;
@@ -179,7 +180,6 @@ void load_map(void) {
 					player.y = j * map.blocksize;
 					c = AIR;
 					break;
-				default:	c = AIR;		break;
 			}
 			map.tiles[i][j] = c;
 			map.new_tiles[i][j] = c;
@@ -656,31 +656,6 @@ void delay(unsigned int *frame_limit) {
 	}
 }
 
-/* determines the smallest value of two numbers */
-float min(float i, float j) {
-	float smallest;
-	if(i <= j) {
-		smallest = i;
-	}
-	else {
-		smallest = j;
-	}
-	return smallest;
-}
-
-/* constrains a value to not exceed a maximum and minimum value */
-float constrain(float value, float min, float max) {
-	if(value <= min) {
-		return min;
-	}
-	else if(value > max) {
-		return max;
-	}
-	else {
-		return value;
-	}
-}
-
 Uint32 msg_event(Uint32 interval, void *param) {
 	SDL_Event event;
 	SDL_UserEvent userevent;
@@ -770,11 +745,9 @@ int main(int argc, char *argv[]) {
 				case SDL_MOUSEBUTTONDOWN:
 					switch(event.button.button) {
 						case 1:
-							//destroy_block(screen, event.button.x, event.button.y);
 							input.mleft = 1;
 							break;
 						case 3:
-							//place_block(event.button.x, event.button.y, &player);
 							input.mright = 1;
 							break;
 						default:
@@ -783,7 +756,6 @@ int main(int argc, char *argv[]) {
 					break;
 				case SDL_MOUSEBUTTONUP:
 					switch(event.button.button) {
-						/* removed because if player falls down, it deletes always the block below the player */
 						case 1:
 							input.mleft = 0;
 							break;
@@ -860,7 +832,7 @@ int main(int argc, char *argv[]) {
 		*frame_limit = SDL_GetTicks() + FLIMIT;
 	}
 
-	/* free tiles/mass/new_mass array in reverse order */
+	/* free tiles/new_tiles array in reverse order */
 	for(i = 0; i < map.h; i++) {
 		free(map.tiles[i]);
 		free(map.new_tiles[i]);
