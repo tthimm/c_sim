@@ -41,10 +41,7 @@ struct Map {
 	char *filename;
 	int blocksize, w, h, min_x, min_y, max_x, max_y;
 	int **tiles;
-	float **water_mass;
-	float **new_water_mass;
-	float **oil_mass;
-	float **new_oil_mass;
+	int **new_tiles;
 } map = {"media/maps/world.map", 20, 0, 0};
 
 struct Bg_color {
@@ -150,57 +147,15 @@ void load_map(void) {
 	}
 
 	/* allocate memory for mass array */
-	map.water_mass = (float **)malloc(map.w * sizeof(float *));
-	if(NULL == map.water_mass) {
-		printf("not enough free ram (mass)");
+	map.new_tiles = (int **)malloc(map.w * sizeof(int *));
+	if(NULL == map.new_tiles) {
+		printf("not enough free ram (new_tiles)");
 		exit(EXIT_FAILURE);
 	}
 	for(k = 0; k < map.w; k++) {
-		map.water_mass[k] = (float *)malloc(map.h * sizeof(float));
-		if(NULL == map.water_mass[k]) {
-			printf("not enough free ram for (mass)row: %d\n", k);
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	/* allocate memory for new_mass array */
-	map.new_water_mass = (float **)malloc(map.w * sizeof(float *));
-	if(NULL == map.new_water_mass) {
-		printf("not enough free ram (new_mass)");
-		exit(EXIT_FAILURE);
-	}
-	for(k = 0; k < map.w; k++) {
-		map.new_water_mass[k] = (float *)malloc(map.h * sizeof(float));
-		if(NULL == map.new_water_mass[k]) {
-			printf("not enough free ram for (new_mass)row: %d\n", k);
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	/* allocate memory for oil mass array */
-	map.oil_mass = (float **)malloc(map.w * sizeof(float *));
-	if(NULL == map.oil_mass) {
-		printf("not enough free ram (oil_mass)");
-		exit(EXIT_FAILURE);
-	}
-	for(k = 0; k < map.w; k++) {
-		map.oil_mass[k] = (float *)malloc(map.h * sizeof(float));
-		if(NULL == map.oil_mass[k]) {
-			printf("not enough free ram for (oil_mass)row: %d\n", k);
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	/* allocate memory for new_mass array */
-	map.new_oil_mass = (float **)malloc(map.w * sizeof(float *));
-	if(NULL == map.new_oil_mass) {
-		printf("not enough free ram (new_oil_mass)");
-		exit(EXIT_FAILURE);
-	}
-	for(k = 0; k < map.w; k++) {
-		map.new_oil_mass[k] = (float *)malloc(map.h * sizeof(float));
-		if(NULL == map.new_oil_mass[k]) {
-			printf("not enough free ram for (new_oil_mass)row: %d\n", k);
+		map.new_tiles[k] = (int *)malloc(map.h * sizeof(int));
+		if(NULL == map.new_tiles[k]) {
+			printf("not enough free ram for (new_tiles)row: %d\n", k);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -235,10 +190,7 @@ void load_map(void) {
 				default:	c = AIR;		break;
 			}
 			map.tiles[i][j] = c;
-			map.water_mass[i][j] = (c == WATER5 ? 1.0 : 0.0);
-			map.new_water_mass[i][j] = (c == WATER5 ? 1.0 : 0.0);
-			map.oil_mass[i][j] = (c == OIL ? 1.0 : 0.0);
-			map.new_oil_mass[i][j] = (c == OIL ? 1.0 : 0.0);
+			map.new_tiles[i][j] = c;
 			i++;
 		}
 	}
@@ -569,8 +521,7 @@ void destroy_block(SDL_Surface *scr, int x, int y) {
 	if((dx < map.w) && (dy < map.h)) {
 		if(!air_tile(dx, dy)) {
 			map.tiles[dx][dy] = AIR;
-			map.new_water_mass[dx][dy] = 0;
-			map.new_oil_mass[dx][dy] = 0;
+			map.new_tiles[dx][dy] = AIR;
 		}
 	}
 }
@@ -581,7 +532,6 @@ void place_block(int x, int y, struct Player *p) {
 	int cam_y = y + map.min_y;
 	int dx = cam_x/map.blocksize;
 	int dy = cam_y/map.blocksize;
-	int mass = ((p->selected == WATER5) || (p->selected == OIL)) ? MAX_MASS : 0;
 
 	if((dx < map.w) && (dy < map.h) && not_player_position(dx, dy, p) ) {
 		/* not solid at new block position, dirt, grass or rock selected &
@@ -591,25 +541,10 @@ void place_block(int x, int y, struct Player *p) {
 				solid(cam_x - map.blocksize, cam_y) ||
 				solid(cam_x, cam_y + map.blocksize) ||
 				solid(cam_x, cam_y - map.blocksize))) {
-			if((p->selected == DIRT) || (p->selected == GRASS) || (p->selected == ROCK)) {
+			//if((p->selected == DIRT) || (p->selected == GRASS) || (p->selected == ROCK)) {
 				map.tiles[dx][dy] = p->selected;
-				map.new_water_mass[dx][dy] = mass;
-			}
-		}
-
-		/* not solid at new block position and water, sand or oil selected */
-		if(!solid(cam_x, cam_y) && ((p->selected == WATER5) || (p->selected == SAND) || (p->selected == OIL))) {
-			map.tiles[dx][dy] = p->selected;
-			switch(p->selected) {
-				case WATER5:
-					map.new_water_mass[dx][dy] = mass;
-					break;
-				case OIL:
-					map.new_oil_mass[dx][dy] = mass;
-					break;
-				default:
-					break;
-			}
+				map.new_tiles[dx][dy] = p->selected;
+			//}
 		}
 	}
 }
@@ -771,297 +706,6 @@ float get_stable_state_below(float total_mass) {
 	}
 	else {
 		return (total_mass + MAX_COMPRESS) / 2;
-	}
-}
-
-void simulate_oil(void) {
-	float flow = 0;
-	float remaining_mass;
-	int x, y;
-
-	for(x = 0; x < map.w; x++) {
-		for(y = 0; y < map.h; y++) {
-			/* skip non oil blocks */
-			if(!air_tile(x, y) && !oil_tile(x, y)) {
-				continue;
-			}
-
-			flow = 0;
-			remaining_mass = map.oil_mass[x][y];
-			if(remaining_mass <= 0) {
-				continue;
-			}
-
-			/* the block below this one */
-			if(y+1 < map.h) {
-				if(air_tile(x, y+1) || oil_tile(x, y+1)) {
-					flow = get_stable_state_below(remaining_mass + map.oil_mass[x][y+1]) - map.oil_mass[x][y+1];
-					if(flow > MIN_FLOW) {
-						flow *= 0.5; /* leads to smoother flow */
-					}
-					flow = constrain(flow, 0, min(MAX_SPEED, remaining_mass));
-
-					map.new_oil_mass[x][y] -= flow;
-					map.new_oil_mass[x][y+1] += flow;
-					remaining_mass -= flow;
-				}
-			}
-
-			if(remaining_mass <= 0) {
-				continue;
-			}
-
-			/* block left of this one */
-			if(x-1 >= 0) {
-				if(air_tile(x-1, y) || oil_tile(x-1, y)) {
-					/* equalize the amount of oil in this block and it's neighbour */
-					flow = (map.oil_mass[x][y] - map.oil_mass[x-1][y]) / 4;
-					if(flow > MIN_FLOW) {
-						flow *= 0.5;
-					}
-					flow = constrain(flow, 0, remaining_mass);
-
-					map.new_oil_mass[x][y] -= flow;
-					map.new_oil_mass[x-1][y] += flow;
-					remaining_mass -= flow;
-				}
-			}
-
-			if(remaining_mass <= 0) {
-				continue;
-			}
-
-			/* block right of this one */
-			if(x + 1 < map.w) {
-				if(air_tile(x+1, y) || oil_tile(x+1, y)) {
-					/* equalize the amount of oil in this block and it's neighbour */
-					flow = (map.oil_mass[x][y] - map.oil_mass[x+1][y]) / 4;
-					if(flow > MIN_FLOW) {
-						flow *= 0.5;
-					}
-					flow = constrain(flow, 0, remaining_mass);
-
-					map.new_oil_mass[x][y] -= flow;
-					map.new_oil_mass[x+1][y] += flow;
-					remaining_mass -= flow;
-				}
-			}
-
-			if(remaining_mass <= 0) {
-				continue;
-			}
-
-			/* up. only compressed oil flows upwards */
-			if(y-1 >= 0) {
-				if(air_tile(x, y-1) || oil_tile(x, y-1)) {
-					flow = remaining_mass - get_stable_state_below(remaining_mass + map.oil_mass[x][y-1]);
-					if(flow > MIN_FLOW) {
-						flow *= 0.5;
-					}
-					flow = constrain(flow, 0, min(MAX_SPEED, remaining_mass));
-
-					map.new_oil_mass[x][y] -= flow;
-					map.new_oil_mass[x][y-1] += flow;
-					remaining_mass -= flow;
-				}
-			}
-		}
-	}
-	/* copy the new mass values to the mass array */
-	for(x = 0; x < map.w; x++) {
-		for(y = 0; y < map.h; y++) {
-			map.oil_mass[x][y] = map.new_oil_mass[x][y];
-		}
-	}
-
-	for(x = 0; x < map.w; x++) {
-		for(y = 0; y < map.h; y++) {
-			/* skip ground blocks */
-			if(!air_tile(x, y) && !oil_tile(x, y)) {
-				continue;
-			}
-			/* Flag/unflag oil blocks */
-			if ((map.oil_mass[x][y] >= MIN_MASS)) {
-				map.tiles[x][y] = OIL;
-			}
-			else {
-				map.tiles[x][y] = AIR;
-			}
-		}
-	}
-}
-
-void simulate_water(void) {
-	float flow = 0;
-	float remaining_mass;
-	int x, y;
-
-	for(x = 0; x < map.w; x++) {
-		for(y = 0; y < map.h; y++) {
-			/* skip non water blocks */
-			if(!air_tile(x, y) && !water_tile(x, y)) {
-				continue;
-			}
-
-			flow = 0;
-			remaining_mass = map.water_mass[x][y];
-			if(remaining_mass <= 0) {
-				continue;
-			}
-
-			/* the block below this one */
-			if(y+1 < map.h) {
-				if(air_tile(x, y+1) || water_tile(x, y+1)) {
-					flow = get_stable_state_below(remaining_mass + map.water_mass[x][y+1]) - map.water_mass[x][y+1];
-					if(flow > MIN_FLOW) {
-						flow *= 0.5; /* leads to smoother flow */
-					}
-					flow = constrain(flow, 0, min(MAX_SPEED, remaining_mass));
-
-					map.new_water_mass[x][y] -= flow;
-					map.new_water_mass[x][y+1] += flow;
-					remaining_mass -= flow;
-				}
-			}
-
-			if(remaining_mass <= 0) {
-				continue;
-			}
-
-			/* block left of this one */
-			if(x-1 >= 0) {
-				if(air_tile(x-1, y) || water_tile(x-1, y)) {
-					/* equalize the amount of water in this block and it's neighbour */
-					flow = (map.water_mass[x][y] - map.water_mass[x-1][y]) / 4;
-					if(flow > MIN_FLOW) {
-						flow *= 0.5;
-					}
-					flow = constrain(flow, 0, remaining_mass);
-
-					map.new_water_mass[x][y] -= flow;
-					map.new_water_mass[x-1][y] += flow;
-					remaining_mass -= flow;
-				}
-			}
-
-			if(remaining_mass <= 0) {
-				continue;
-			}
-
-			/* block right of this one */
-			if(x + 1 < map.w) {
-				if(air_tile(x+1, y) || water_tile(x+1, y)) {
-					/* equalize the amount of water in this block and it's neighbour */
-					flow = (map.water_mass[x][y] - map.water_mass[x+1][y]) / 4;
-					if(flow > MIN_FLOW) {
-						flow *= 0.5;
-					}
-					flow = constrain(flow, 0, remaining_mass);
-
-					map.new_water_mass[x][y] -= flow;
-					map.new_water_mass[x+1][y] += flow;
-					remaining_mass -= flow;
-				}
-			}
-
-			if(remaining_mass <= 0) {
-				continue;
-			}
-
-			/* up. only compressed water flows upwards */
-			if(y-1 >= 0) {
-				if(air_tile(x, y-1) || water_tile(x, y-1)) {
-					flow = remaining_mass - get_stable_state_below(remaining_mass + map.water_mass[x][y-1]);
-					if(flow > MIN_FLOW) {
-						flow *= 0.5;
-					}
-					flow = constrain(flow, 0, min(MAX_SPEED, remaining_mass));
-
-					map.new_water_mass[x][y] -= flow;
-					map.new_water_mass[x][y-1] += flow;
-					remaining_mass -= flow;
-				}
-			}
-		}
-	}
-	/* copy the new mass values to the mass array */
-	for(x = 0; x < map.w; x++) {
-		for(y = 0; y < map.h; y++) {
-			map.water_mass[x][y] = map.new_water_mass[x][y];
-		}
-	}
-
-	for(x = 0; x < map.w; x++) {
-		for(y = 0; y < map.h; y++) {
-			/* skip ground blocks */
-			if(!air_tile(x, y) && !water_tile(x, y)) {
-				continue;
-			}
-			/* Flag/unflag water blocks */
-			if ((map.water_mass[x][y] >= MIN_MASS) && (map.water_mass[x][y] < water2_mass)) {
-				map.tiles[x][y] = WATER1;
-			}
-			else if ((map.water_mass[x][y] >= water2_mass) && (map.water_mass[x][y] < water3_mass)) {
-				map.tiles[x][y] = WATER2;
-			}
-			else if ((map.water_mass[x][y] >= water3_mass) && (map.water_mass[x][y] < water4_mass)) {
-				map.tiles[x][y] = WATER3;
-			}
-			else if ((map.water_mass[x][y] >= water4_mass) && (map.water_mass[x][y] < water5_mass)) {
-				map.tiles[x][y] = WATER4;
-			}
-			else if (map.water_mass[x][y] >= water5_mass) {
-				map.tiles[x][y] = WATER5;
-			}
-			else {
-				map.tiles[x][y] = AIR;
-			}
-		}
-	}
-}
-
-/* sand falls down and applies pressure to water */
-void move_sand(void) {
-	int x, y;
-	for(x = map.w - 1; x >= 0 ; x--) {
-		for(y = map.h - 1; y >= 0; y--) {
-			if((y + 1 <= map.h) && (x + 1 <= map.w)) {
-				if(sand_tile(x, y) && air_tile(x, y+1)) {
-					map.tiles[x][y] = AIR;
-					map.tiles[x][y+1] = SAND;
-				}
-
-				/* current is sand and below is water*/
-				if(sand_tile(x, y) && water_tile(x, y+1)) {
-
-					/* left of bottom tile is water or air, flow left*/
-					if((x > 0) && (water_tile(x-1, y+1) || air_tile(x-1, y+1))) {
-						map.new_water_mass[x-1][y+1] += map.new_water_mass[x][y+1];
-						map.new_water_mass[x][y+1] = 0;
-						map.tiles[x][y] = AIR;
-						map.new_water_mass[x][y] = 0;
-						map.tiles[x][y+1] = SAND;
-					}
-
-					/* right of bottom tile is water or air, flow rightt*/
-					else if(water_tile(x+1, y+1) || air_tile(x+1, y+1)) {
-						map.new_water_mass[x+1][y+1] += map.new_water_mass[x][y+1];
-						map.new_water_mass[x][y+1] = 0;
-						map.tiles[x][y] = AIR;
-						map.new_water_mass[x][y] = 0;
-						map.tiles[x][y+1] = SAND;
-					}
-
-					/* can't flow left or right, move to top of tile */
-					else {
-						map.tiles[x][y] = map.tiles[x][y+1];		// move below tile one up
-						map.new_water_mass[x][y] = map.new_water_mass[x][y+1];	// set mass to mass of below tile
-						map.tiles[x][y+1] = SAND;					// move sand tile one down
-						map.new_water_mass[x][y+1] = 0;					// reset sand mass
-					}
-				}
-			}
-		}
 	}
 }
 
@@ -1235,9 +879,6 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		move_player(&player); // and camera
-		move_sand();
-		simulate_water();
-		simulate_oil();
 		place_and_destroy_blocks(screen, event.button.x, event.button.y, &player);
 		//input.mleft = 0; // uncomment for click once to delete one block
 		//input.mright = 0; // uncomment for click once to place one block
@@ -1250,16 +891,10 @@ int main(int argc, char *argv[]) {
 	/* free tiles/mass/new_mass array in reverse order */
 	for(i = 0; i < map.h; i++) {
 		free(map.tiles[i]);
-		free(map.water_mass[i]);
-		free(map.new_water_mass[i]);
-		free(map.oil_mass[i]);
-		free(map.new_oil_mass[i]);
+		free(map.new_tiles[i]);
 	}
 	free(map.tiles);
-	free(map.water_mass);
-	free(map.new_water_mass);
-	free(map.oil_mass);
-	free(map.new_oil_mass);
+	free(map.new_tiles);
 
 	SDL_FreeSurface(tileset);
 	SDL_FreeSurface(player_image);
