@@ -27,11 +27,11 @@
 #define SAVE_EVENT (SDL_USEREVENT + 1)
 
 /* tile index  -1   0     20     40    60     80      100     120     140     160    180 */
-enum blocks { AIR, DIRT, GRASS, SAND, ROCK, WATER1, WATER2, WATER3, WATER4, WATER5, OIL };
+enum cells { AIR, DIRT, GRASS, SAND, ROCK, WATER1, WATER2, WATER3, WATER4, WATER5, OIL };
 
 struct Map {
 	char *filename;
-	int blocksize, w, h, min_x, min_y, max_x, max_y;
+	int cellsize, w, h, min_x, min_y, max_x, max_y;
 	int **tiles;
 	int **new_tiles;
 } map = {"media/maps/world.map", 20, 0, 0};
@@ -58,7 +58,7 @@ void save_map(void) {
 	FILE *mmap;
 	int x, y;
 	char tile;
-	int p_x = player.x / map.blocksize, p_y = player.y / map.blocksize;
+	int p_x = player.x / map.cellsize, p_y = player.y / map.cellsize;
 
 	/* open mapfile */
 	mmap = fopen(map.filename, "w+");
@@ -176,8 +176,8 @@ void load_map(void) {
 				case '5':	c = WATER5;		break;
 				case 'o':	c = OIL;		break;
 				case 'p':
-					player.x = i * map.blocksize;
-					player.y = j * map.blocksize;
+					player.x = i * map.cellsize;
+					player.y = j * map.cellsize;
 					c = AIR;
 					break;
 			}
@@ -190,14 +190,14 @@ void load_map(void) {
 
 	/* set min and max scroll position of the map */
 	map.min_x = map.min_y = 0;
-	map.max_x = map.w * map.blocksize;
-	map.max_y = map.h * map.blocksize;
+	map.max_x = map.w * map.cellsize;
+	map.max_y = map.h * map.cellsize;
 }
 
-/* blocks are solid, water, oil and air aren't */
+/* cells are solid, water, oil and air aren't */
 int solid(int x, int y) {
-	int dx = x/map.blocksize;
-	int dy = y/map.blocksize;
+	int dx = x/map.cellsize;
+	int dy = y/map.cellsize;
 	if((dx < map.w) && (dy < map.h)) { /* fix for trying to access index out of bounds > */
 		if( (y < 0) || (x < 0) || (dy >= map.h) || (dx >= map.w) ||
 				( !air_tile(dx, dy) && !liquid_tile(dx, dy))) {
@@ -273,7 +273,7 @@ int liquid_tile(int x, int y) {
 }
 
 int player_on_liquid_tile(struct Player *p) {
-	if(liquid_tile(p->x/map.blocksize, (p->y + p->h) / map.blocksize - 1)) {
+	if(liquid_tile(p->x/map.cellsize, (p->y + p->h) / map.cellsize - 1)) {
 		return 1;
 	}
 	else {
@@ -348,13 +348,13 @@ void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
 	SDL_Rect src, dst;
 	src.x = tile_x;
 	src.y = 0;
-	src.w = map.blocksize;
-	src.h = map.blocksize;
+	src.w = map.cellsize;
+	src.h = map.cellsize;
 
 	dst.x = x;
 	dst.y = y;
-	dst.w = map.blocksize;
-	dst.h = map.blocksize;
+	dst.w = map.cellsize;
+	dst.h = map.cellsize;
 	SDL_BlitSurface(tileset, &src, screen, &dst);
 }
 
@@ -363,19 +363,19 @@ void draw_all_tiles(SDL_Surface *screen) {
 	int x, y, tileset_index;
 	int x1, x2, y1, y2, map_x, map_y;
 
-	map_x = map.min_x / map.blocksize;
-	x1 = (map.min_x % map.blocksize) * -1;
-	x2 = x1 + SCREEN_WIDTH + (x1 == 0 ? 0 : map.blocksize);
+	map_x = map.min_x / map.cellsize;
+	x1 = (map.min_x % map.cellsize) * -1;
+	x2 = x1 + SCREEN_WIDTH + (x1 == 0 ? 0 : map.cellsize);
 
-	map_y = map.min_y / map.blocksize;
-	y1 = (map.min_y % map.blocksize) * -1;
-	y2 = y1 + SCREEN_HEIGHT + (y1 == 0 ? 0 : map.blocksize);
+	map_y = map.min_y / map.cellsize;
+	y1 = (map.min_y % map.cellsize) * -1;
+	y2 = y1 + SCREEN_HEIGHT + (y1 == 0 ? 0 : map.cellsize);
 
-	for(y = y1; y < y2; y += map.blocksize) {
-		map_x = map.min_x / map.blocksize;
-		for(x = x1; x < x2; x += map.blocksize) {
+	for(y = y1; y < y2; y += map.cellsize) {
+		map_x = map.min_x / map.cellsize;
+		for(x = x1; x < x2; x += map.cellsize) {
 			tileset_index = map.tiles[map_x][map_y] - 1;
-			draw_tile(screen, x, y, tileset_index * map.blocksize);
+			draw_tile(screen, x, y, tileset_index * map.cellsize);
 			map_x++;
 		}
 		map_y++;
@@ -417,7 +417,7 @@ void check_against_map(struct Player *p) {
 					p->y -= 1;
 				}
 				else {
-					/* reset upward movement to prevent jumping if player hits above block and then moves left/right */
+					/* reset upward movement to prevent jumping if player hits above cell and then moves left/right */
 					p->vy = 0;
 				}
 			}
@@ -506,10 +506,10 @@ void draw_player(SDL_Surface *screen, struct Player *p) {
 	SDL_BlitSurface(player_image, &src, screen, &dst);
 }
 
-/* destroy block */
-void destroy_block(SDL_Surface *scr, int x, int y) {
-	int dx = (x + map.min_x)/map.blocksize;
-	int dy = (y + map.min_y)/map.blocksize;
+/* destroy cell */
+void destroy_cell(SDL_Surface *scr, int x, int y) {
+	int dx = (x + map.min_x)/map.cellsize;
+	int dy = (y + map.min_y)/map.cellsize;
 	if((dx < map.w) && (dy < map.h)) {
 		if(!air_tile(dx, dy)) {
 			map.tiles[dx][dy] = AIR;
@@ -518,15 +518,15 @@ void destroy_block(SDL_Surface *scr, int x, int y) {
 	}
 }
 
-/* place block if there is enough room */
-void place_block(int x, int y, struct Player *p) {
+/* place cell if there is enough room */
+void place_cell(int x, int y, struct Player *p) {
 	int cam_x = x + map.min_x;
 	int cam_y = y + map.min_y;
-	int dx = cam_x/map.blocksize;
-	int dy = cam_y/map.blocksize;
+	int dx = cam_x/map.cellsize;
+	int dy = cam_y/map.cellsize;
 
 	if((dx < map.w) && (dy < map.h) && not_player_position(dx, dy, p) ) {
-		/* not solid at new block position */
+		/* not solid at new cell position */
 		if(!solid(cam_x, cam_y)) {
 			map.tiles[dx][dy] = p->selected;
 			map.new_tiles[dx][dy] = p->selected;
@@ -534,14 +534,14 @@ void place_block(int x, int y, struct Player *p) {
 	}
 }
 
-void place_and_destroy_blocks(SDL_Surface *scr, int x, int y, struct Player *p) {
+void place_and_destroy_cells(SDL_Surface *scr, int x, int y, struct Player *p) {
 	// if mouse button is pressed and player moves cursor out of the screen, x and y could be negative
 	if((x > 0) && (y > 0)) {
 		if(input.mleft) {
-			destroy_block(scr, x, y);
+			destroy_cell(scr, x, y);
 		}
 		if(input.mright) {
-			place_block(x, y, p);
+			place_cell(x, y, p);
 		}
 	}
 }
@@ -549,13 +549,13 @@ void place_and_destroy_blocks(SDL_Surface *scr, int x, int y, struct Player *p) 
 /* returns 1 if click position is not player position */
 int not_player_position(int x, int y, struct Player *p) {
 	int x1, x2, x3, x4, y1, y2, y3, y4;
-	x1 = p->x / map.blocksize;
-	x2 = ((p->x) + p->w / 2) / map.blocksize;
-	x3 = ((p->x) + p->w - 1) / map.blocksize;
+	x1 = p->x / map.cellsize;
+	x2 = ((p->x) + p->w / 2) / map.cellsize;
+	x3 = ((p->x) + p->w - 1) / map.cellsize;
 	x4 = x1 + 1;
-	y1 = p->y / map.blocksize;
-	y2 = ((p->y) + p->h / 2) / map.blocksize;
-	y3 = ((p->y) + p->h - 1) / map.blocksize;
+	y1 = p->y / map.cellsize;
+	y2 = ((p->y) + p->h / 2) / map.cellsize;
+	y3 = ((p->y) + p->h - 1) / map.cellsize;
 	y4 = y1 + 1;
 	if( !((x == x1) && (y == y1)) && !((x == x2) && (y == y2)) && !((x == x3) && (y == y3)) &&
 			!((x + 1 == x4) && (y == y4)) && !((x == x4) && (y + 1 == y4))) {
@@ -582,13 +582,13 @@ void draw_cursor(SDL_Surface *screen, int *x, int *y) {
 	SDL_Rect src, dst;
 	src.x = 0;
 	src.y = 0;
-	src.w = map.blocksize;
-	src.h = map.blocksize;
+	src.w = map.cellsize;
+	src.h = map.cellsize;
 
 	dst.x = *x;
 	dst.y = *y;
-	dst.w = map.blocksize;
-	dst.h = map.blocksize;
+	dst.w = map.cellsize;
+	dst.h = map.cellsize;
 	SDL_BlitSurface(cursor, &src, screen, &dst);
 }
 
@@ -823,9 +823,9 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		move_player(&player); // and camera
-		place_and_destroy_blocks(screen, event.button.x, event.button.y, &player);
-		//input.mleft = 0; // uncomment for click once to delete one block
-		//input.mright = 0; // uncomment for click once to place one block
+		place_and_destroy_cells(screen, event.button.x, event.button.y, &player);
+		//input.mleft = 0; // uncomment for click once to delete one cell
+		//input.mright = 0; // uncomment for click once to place one cell
 		draw(screen, mouse_x_ptr, mouse_y_ptr, &player, text, font, text_color, show_save_msg, save_message);
 
 		delay(frame_limit);
