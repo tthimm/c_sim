@@ -28,12 +28,20 @@
 
 /* tile index  -1   0     20     40    60     80      100     120     140     160    180 */
 enum cells { AIR, DIRT, GRASS, SAND, ROCK, WATER1, WATER2, WATER3, WATER4, WATER5, OIL };
+enum calc { FALSE, TRUE };
+enum direction { NONE, LEFT, RIGHT };
+
+struct Cell {
+	unsigned cell_type:4;	// 0/16
+	unsigned direction:2;	// 0/4
+	unsigned mass:3;		// 0/8
+	unsigned calc:1;		// 0/1
+} cell[2048];
 
 struct Map {
 	char *filename;
 	int cellsize, w, h, min_x, min_y, max_x, max_y;
-	int **tiles;
-	int **new_tiles;
+	int **grid;
 } map = {"media/maps/world.map", 20, 0, 0};
 
 struct Bg_color {
@@ -70,7 +78,7 @@ void save_map(void) {
 	/* store tile symbols to mapfile instead of internal used integers */
 	for(y = 0; y < map.h; y++) {
 		for(x = 0; x < map.w; x++) {
-			switch(map.tiles[x][y]) {
+			switch(cell[map.grid[x][y]].cell_type) {
 				case AIR:		tile = '.';	break;
 				case DIRT:		tile = '#';	break;
 				case GRASS:		tile = 'g';	break;
@@ -97,10 +105,10 @@ void save_map(void) {
 	fclose(mmap);
 }
 
-/* load map file and fill tiles/new_tiles array */
+/* load map file and fill grid array */
 void load_map(void) {
-	int c, i, j, k;
-	i = j = k = 0;
+	int c, i, j, k, counter;
+	i = j = k = counter = 0;
 	int nRet;
 	FILE *mmap;
 	size_t *t = malloc(0);
@@ -124,30 +132,16 @@ void load_map(void) {
 	free(gptr);
 	free(t);
 
-	/* allocate memory for tileset array */
-	map.tiles = (int **)malloc(map.w * sizeof(int *));
-	if(NULL == map.tiles) {
+	/* allocate memory for grid array */
+	map.grid = (int **)malloc(map.w * sizeof(int *));
+	if(NULL == map.grid) {
 		printf("not enough free ram (tiles)");
 		exit(EXIT_FAILURE);
 	}
 	for(k = 0; k < map.w; k++) {
-		map.tiles[k] = (int *)malloc(map.h * sizeof(int));
-		if(NULL == map.tiles[k]) {
+		map.grid[k] = (int *)malloc(map.h * sizeof(int));
+		if(NULL == map.grid[k]) {
 			printf("not enough free ram for (tiles)row: %d\n", k);
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	/* allocate memory for new_tiles array */
-	map.new_tiles = (int **)malloc(map.w * sizeof(int *));
-	if(NULL == map.new_tiles) {
-		printf("not enough free ram (new_tiles)");
-		exit(EXIT_FAILURE);
-	}
-	for(k = 0; k < map.w; k++) {
-		map.new_tiles[k] = (int *)malloc(map.h * sizeof(int));
-		if(NULL == map.new_tiles[k]) {
-			printf("not enough free ram for (new_tiles)row: %d\n", k);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -155,7 +149,7 @@ void load_map(void) {
 	/* reset position to begin of stream */
 	rewind(mmap);
 
-	/* fill tiles/new_tiles array with values from mapfile */
+	/* fill grid array with values from mapfile */
 	while( (c = fgetc(mmap)) != EOF ) {
 		/* if newline */
 		if(c == 10) {
@@ -169,10 +163,10 @@ void load_map(void) {
 				case 'g':	c = GRASS;		break;
 				case 's':	c = SAND;		break;
 				case 'r':	c = ROCK;		break;
-				case '1':	c = WATER1;		break;
-				case '2':	c = WATER2;		break;
-				case '3':	c = WATER3;		break;
-				case '4':	c = WATER4;		break;
+				case '1':	c = WATER5;		break;
+				case '2':	c = WATER5;		break;
+				case '3':	c = WATER5;		break;
+				case '4':	c = WATER5;		break;
 				case '5':	c = WATER5;		break;
 				case 'o':	c = OIL;		break;
 				case 'p':
@@ -181,9 +175,13 @@ void load_map(void) {
 					c = AIR;
 					break;
 			}
-			map.tiles[i][j] = c;
-			map.new_tiles[i][j] = c;
+			map.grid[i][j] = counter;
+			cell[counter].cell_type = c;
+			cell[counter].calc = TRUE;
+			cell[counter].mass = (c == WATER5 ? MAX_MASS : 0);
+			cell[counter].direction = NONE;
 			i++;
+			counter++;
 		}
 	}
 	fclose(mmap);
@@ -214,7 +212,7 @@ int solid(int x, int y) {
 
 int air_tile(int x, int y) {
 	if((x < map.w) && (y < map.h)) {
-		return map.tiles[x][y] == AIR;
+		return cell[map.grid[x][y]].cell_type == AIR;
 	}
 	else {
 		return 0;
@@ -224,7 +222,7 @@ int air_tile(int x, int y) {
 /* returns 1 if tile is on map and contains sand */
 int sand_tile(int x, int y) {
 	if((x < map.w) && (y < map.h)) {
-		return map.tiles[x][y] == SAND;
+		return cell[map.grid[x][y]].cell_type == SAND;
 	}
 	else {
 		return 0;
@@ -235,7 +233,7 @@ int sand_tile(int x, int y) {
 int water_tile(int x,int y) {
 	int ret = 0;
 	if((x < map.w) && (y < map.h)) {
-		switch(map.tiles[x][y]) {
+		switch(cell[map.grid[x][y]].cell_type) {
 			case WATER1:
 				ret = 1;
 				break;
@@ -261,7 +259,7 @@ int water_tile(int x,int y) {
 /* returns 1 if tile is on map and contains oil */
 int oil_tile(int x, int y) {
 	if((x < map.w) && (y < map.h)) {
-		return map.tiles[x][y] == OIL;
+		return cell[map.grid[x][y]].cell_type == OIL;
 	}
 	else {
 		return 0;
@@ -374,7 +372,7 @@ void draw_all_tiles(SDL_Surface *screen) {
 	for(y = y1; y < y2; y += map.cellsize) {
 		map_x = map.min_x / map.cellsize;
 		for(x = x1; x < x2; x += map.cellsize) {
-			tileset_index = map.tiles[map_x][map_y] - 1;
+			tileset_index = cell[map.grid[map_x][map_y]].cell_type - 1;
 			draw_tile(screen, x, y, tileset_index * map.cellsize);
 			map_x++;
 		}
@@ -512,8 +510,10 @@ void destroy_cell(SDL_Surface *scr, int x, int y) {
 	int dy = (y + map.min_y)/map.cellsize;
 	if((dx < map.w) && (dy < map.h)) {
 		if(!air_tile(dx, dy)) {
-			map.tiles[dx][dy] = AIR;
-			map.new_tiles[dx][dy] = AIR;
+			cell[map.grid[dx][dy]].cell_type = AIR;
+			cell[map.grid[dx][dy]].mass = 0;
+			cell[map.grid[dx][dy]].direction = NONE;
+			cell[map.grid[dx][dy]].calc = TRUE;
 		}
 	}
 }
@@ -528,8 +528,10 @@ void place_cell(int x, int y, struct Player *p) {
 	if((dx < map.w) && (dy < map.h) && not_player_position(dx, dy, p) ) {
 		/* not solid at new cell position */
 		if(!solid(cam_x, cam_y)) {
-			map.tiles[dx][dy] = p->selected;
-			map.new_tiles[dx][dy] = p->selected;
+			cell[map.grid[dx][dy]].cell_type = p->selected;
+			cell[map.grid[dx][dy]].mass = MAX_MASS;
+			cell[map.grid[dx][dy]].direction = NONE;
+			cell[map.grid[dx][dy]].calc = TRUE;
 		}
 	}
 }
@@ -678,6 +680,42 @@ Uint32 msg_event(Uint32 interval, void *param) {
 	return interval;
 }
 
+void copy_cell(int x, int y, int new_x, int new_y) {
+	int old_type, old_mass, old_direction, old_calc;
+	/* save old states */
+	old_type = cell[map.grid[x][y]].cell_type;
+	old_mass = cell[map.grid[x][y]].mass;
+	old_direction = cell[map.grid[x][y]].direction;
+	old_calc = cell[map.grid[x][y]].calc;
+
+	/* switch states of the two cells */
+	cell[map.grid[x][y]].cell_type = cell[map.grid[new_x][new_y]].cell_type;
+	cell[map.grid[x][y]].mass = cell[map.grid[new_x][new_y]].mass;
+	cell[map.grid[x][y]].direction = cell[map.grid[new_x][new_y]].direction;
+	cell[map.grid[x][y]].calc = cell[map.grid[new_x][new_y]].calc;
+
+	cell[map.grid[new_x][new_y]].cell_type = old_type;
+	cell[map.grid[new_x][new_y]].mass = old_mass;
+	cell[map.grid[new_x][new_y]].direction = old_direction;
+	cell[map.grid[new_x][new_y]].calc = old_calc;
+}
+
+void update_cells(void) {
+	int x, y;
+
+	for(x = 0; x < map.w; x++) {
+		for(y = 0; y < map.h; y++) {
+			/* within map */
+			if((y >= 0) && (x >= 0) && (y < map.h) && (x < map.w)) {
+				/* water falls down, through air and oil */
+				if(water_tile(x, y) && (air_tile(x, y+1) || oil_tile(x, y+1))) {
+					copy_cell(x, y, x, y+1);
+				}
+			}
+		}
+	}
+}
+
 int main(int argc, char *argv[]) {
 	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) == -1) {
 		printf("Can't initialize SDL: %s\n", SDL_GetError());
@@ -824,8 +862,9 @@ int main(int argc, char *argv[]) {
 		}
 		move_player(&player); // and camera
 		place_and_destroy_cells(screen, event.button.x, event.button.y, &player);
-		//input.mleft = 0; // uncomment for click once to delete one cell
-		//input.mright = 0; // uncomment for click once to place one cell
+		input.mleft = 0; // uncomment for click once to delete one cell
+		input.mright = 0; // uncomment for click once to place one cell
+		update_cells();
 		draw(screen, mouse_x_ptr, mouse_y_ptr, &player, text, font, text_color, show_save_msg, save_message);
 
 		delay(frame_limit);
@@ -834,11 +873,9 @@ int main(int argc, char *argv[]) {
 
 	/* free tiles/new_tiles array in reverse order */
 	for(i = 0; i < map.h; i++) {
-		free(map.tiles[i]);
-		free(map.new_tiles[i]);
+		free(map.grid[i]);
 	}
-	free(map.tiles);
-	free(map.new_tiles);
+	free(map.grid);
 
 	SDL_FreeSurface(tileset);
 	SDL_FreeSurface(player_image);
