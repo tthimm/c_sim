@@ -21,10 +21,11 @@
 #define PLAYER_SPEED 4
 #define MAX_FALL_SPEED 20
 #define SCROLL_SPEED PLAYER_SPEED
-#define MAX_MASS 5
-#define MIN_MASS 1
-#define FLIMIT (1000/60)
+#define FLIMIT 30
 #define SAVE_EVENT (SDL_USEREVENT + 1)
+
+const unsigned char MAX_MASS = 5;
+const unsigned char MIN_MASS = 1;
 
 /* tile index  -1   0     20     40    60     80      100     120     140     160    180 */
 enum cells { AIR, DIRT, GRASS, SAND, ROCK, WATER1, WATER2, WATER3, WATER4, WATER5, OIL };
@@ -34,7 +35,7 @@ enum direction { NONE, LEFT, RIGHT };
 struct Cell {
 	unsigned cell_type:4;	// 0/16
 	unsigned direction:2;	// 0/4
-	unsigned mass:3;		// 0/8
+	unsigned mass:4;		// 0/16
 	unsigned calc:1;		// 0/1
 } cell[2048];
 
@@ -84,10 +85,10 @@ void save_map(void) {
 				case GRASS:		tile = 'g';	break;
 				case SAND:		tile = 's';	break;
 				case ROCK:		tile = 'r';	break;
-				case WATER1:	tile = '5';	break;
-				case WATER2:	tile = '5';	break;
-				case WATER3:	tile = '5';	break;
-				case WATER4:	tile = '5';	break;
+				case WATER1:	tile = '1';	break;
+				case WATER2:	tile = '2';	break;
+				case WATER3:	tile = '3';	break;
+				case WATER4:	tile = '4';	break;
 				case WATER5:	tile = '5';	break;
 				case OIL:		tile = 'o';	break;
 			}
@@ -108,6 +109,7 @@ void save_map(void) {
 /* load map file and fill grid array */
 void load_map(void) {
 	int c, i, j, k, counter;
+	unsigned char mass;
 	i = j = k = counter = 0;
 	int nRet;
 	FILE *mmap;
@@ -149,7 +151,7 @@ void load_map(void) {
 	/* reset position to begin of stream */
 	rewind(mmap);
 
-	/* fill grid array with values from mapfile */
+	/* fill grid array with index numbers from mapfile */
 	while( (c = fgetc(mmap)) != EOF ) {
 		/* if newline */
 		if(c == 10) {
@@ -163,10 +165,10 @@ void load_map(void) {
 				case 'g':	c = GRASS;		break;
 				case 's':	c = SAND;		break;
 				case 'r':	c = ROCK;		break;
-				case '1':	c = WATER5;		break;
-				case '2':	c = WATER5;		break;
-				case '3':	c = WATER5;		break;
-				case '4':	c = WATER5;		break;
+				case '1':	c = WATER1;		break;
+				case '2':	c = WATER2;		break;
+				case '3':	c = WATER3;		break;
+				case '4':	c = WATER4;		break;
 				case '5':	c = WATER5;		break;
 				case 'o':	c = OIL;		break;
 				case 'p':
@@ -176,9 +178,31 @@ void load_map(void) {
 					break;
 			}
 			map.grid[i][j] = counter;
+
+			/* fill cell struct with cell states for every index in grid */
 			cell[counter].cell_type = c;
 			cell[counter].calc = TRUE;
-			cell[counter].mass = (c == WATER5 ? MAX_MASS : 0);
+			switch(c) {
+				case WATER1:
+					mass = 1;
+					break;
+				case WATER2:
+					mass = 2;
+					break;
+				case WATER3:
+					mass = 3;
+					break;
+				case WATER4:
+					mass = 4;
+					break;
+				case WATER5:
+					mass = 5;
+					break;
+				default:
+					mass = 0;
+					break;
+			}
+			cell[counter].mass = mass;
 			cell[counter].direction = NONE;
 			i++;
 			counter++;
@@ -192,13 +216,13 @@ void load_map(void) {
 	map.max_y = map.h * map.cellsize;
 }
 
-/* cells are solid, water, oil and air aren't */
+/* cells containing anything but water, oil and air are solid */
 int solid(int x, int y) {
 	int dx = x/map.cellsize;
 	int dy = y/map.cellsize;
 	if((dx < map.w) && (dy < map.h)) { /* fix for trying to access index out of bounds > */
 		if( (y < 0) || (x < 0) || (dy >= map.h) || (dx >= map.w) ||
-				( !air_tile(dx, dy) && !liquid_tile(dx, dy))) {
+				( !air_cell(dx, dy) && !liquid_cell(dx, dy))) {
 			return 1;
 		}
 		else {
@@ -210,7 +234,7 @@ int solid(int x, int y) {
 	}
 }
 
-int air_tile(int x, int y) {
+int air_cell(int x, int y) {
 	if((x < map.w) && (y < map.h)) {
 		return cell[map.grid[x][y]].cell_type == AIR;
 	}
@@ -220,7 +244,7 @@ int air_tile(int x, int y) {
 }
 
 /* returns 1 if tile is on map and contains sand */
-int sand_tile(int x, int y) {
+int sand_cell(int x, int y) {
 	if((x < map.w) && (y < map.h)) {
 		return cell[map.grid[x][y]].cell_type == SAND;
 	}
@@ -230,7 +254,7 @@ int sand_tile(int x, int y) {
 }
 
 /* returns 1 if tile is on map and contains water */
-int water_tile(int x,int y) {
+int water_cell(int x,int y) {
 	int ret = 0;
 	if((x < map.w) && (y < map.h)) {
 		switch(cell[map.grid[x][y]].cell_type) {
@@ -257,7 +281,7 @@ int water_tile(int x,int y) {
 }
 
 /* returns 1 if tile is on map and contains oil */
-int oil_tile(int x, int y) {
+int oil_cell(int x, int y) {
 	if((x < map.w) && (y < map.h)) {
 		return cell[map.grid[x][y]].cell_type == OIL;
 	}
@@ -266,12 +290,12 @@ int oil_tile(int x, int y) {
 	}
 }
 
-int liquid_tile(int x, int y) {
-	return (water_tile(x, y) || oil_tile(x, y));
+int liquid_cell(int x, int y) {
+	return (water_cell(x, y) || oil_cell(x, y));
 }
 
-int player_on_liquid_tile(struct Player *p) {
-	if(liquid_tile(p->x/map.cellsize, (p->y + p->h) / map.cellsize - 1)) {
+int player_on_liquid_cell(struct Player *p) {
+	if(liquid_cell(p->x/map.cellsize, (p->y + p->h) / map.cellsize - 1)) {
 		return 1;
 	}
 	else {
@@ -280,7 +304,7 @@ int player_on_liquid_tile(struct Player *p) {
 }
 
 int player_speed(struct Player *p) {
-	if(player_on_liquid_tile(p)) {
+	if(player_on_liquid_cell(p)) {
 		return PLAYER_SPEED/2;
 	}
 	else {
@@ -289,7 +313,7 @@ int player_speed(struct Player *p) {
 }
 
 int player_fall_speed(struct Player *p) {
-	if(player_on_liquid_tile(p)) {
+	if(player_on_liquid_cell(p)) {
 		return MAX_FALL_SPEED/5;
 	}
 	else {
@@ -341,10 +365,10 @@ void load_tileset(void) {
 	SDL_FreeSurface(temp);
 }
 
-/* draw the tile */
-void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
+/* draw the cell */
+void draw_cell(SDL_Surface *screen, int x, int y, int cell_x) {
 	SDL_Rect src, dst;
-	src.x = tile_x;
+	src.x = cell_x;
 	src.y = 0;
 	src.w = map.cellsize;
 	src.h = map.cellsize;
@@ -356,8 +380,8 @@ void draw_tile(SDL_Surface *screen, int x, int y, int tile_x) {
 	SDL_BlitSurface(tileset, &src, screen, &dst);
 }
 
-/* iterate through tiles array and draw tiles */
-void draw_all_tiles(SDL_Surface *screen) {
+/* iterate through grid array and draw cells */
+void draw_all_cells(SDL_Surface *screen) {
 	int x, y, tileset_index;
 	int x1, x2, y1, y2, map_x, map_y;
 
@@ -373,7 +397,7 @@ void draw_all_tiles(SDL_Surface *screen) {
 		map_x = map.min_x / map.cellsize;
 		for(x = x1; x < x2; x += map.cellsize) {
 			tileset_index = cell[map.grid[map_x][map_y]].cell_type - 1;
-			draw_tile(screen, x, y, tileset_index * map.cellsize);
+			draw_cell(screen, x, y, tileset_index * map.cellsize);
 			map_x++;
 		}
 		map_y++;
@@ -509,7 +533,7 @@ void destroy_cell(SDL_Surface *scr, int x, int y) {
 	int dx = (x + map.min_x)/map.cellsize;
 	int dy = (y + map.min_y)/map.cellsize;
 	if((dx < map.w) && (dy < map.h)) {
-		if(!air_tile(dx, dy)) {
+		if(!air_cell(dx, dy)) {
 			cell[map.grid[dx][dy]].cell_type = AIR;
 			cell[map.grid[dx][dy]].mass = 0;
 			cell[map.grid[dx][dy]].direction = NONE;
@@ -631,7 +655,7 @@ void draw_save_msg(struct Player *p, SDL_Surface *screen, SDL_Surface *save_mess
 
 void draw(SDL_Surface *screen, int *mouse_x, int *mouse_y, struct Player *p, SDL_Surface *text, TTF_Font *font, SDL_Color color, int sv_msg, SDL_Surface *save_message) {
 	draw_background(screen);
-	draw_all_tiles(screen);
+	draw_all_cells(screen);
 	draw_text(p, screen, text, font, color);
 	if(sv_msg) {
 		draw_save_msg(p, screen, save_message, font, color);
@@ -680,7 +704,7 @@ Uint32 msg_event(Uint32 interval, void *param) {
 	return interval;
 }
 
-void copy_cell(int x, int y, int new_x, int new_y) {
+void move_cell_down(int x, int y) {
 	int old_type, old_mass, old_direction, old_calc;
 	/* save old states */
 	old_type = cell[map.grid[x][y]].cell_type;
@@ -689,15 +713,81 @@ void copy_cell(int x, int y, int new_x, int new_y) {
 	old_calc = cell[map.grid[x][y]].calc;
 
 	/* switch states of the two cells */
-	cell[map.grid[x][y]].cell_type = cell[map.grid[new_x][new_y]].cell_type;
-	cell[map.grid[x][y]].mass = cell[map.grid[new_x][new_y]].mass;
-	cell[map.grid[x][y]].direction = cell[map.grid[new_x][new_y]].direction;
-	cell[map.grid[x][y]].calc = cell[map.grid[new_x][new_y]].calc;
+	cell[map.grid[x][y]].cell_type = cell[map.grid[x][y+1]].cell_type;
+	cell[map.grid[x][y]].mass = cell[map.grid[x][y+1]].mass;
+	cell[map.grid[x][y]].direction = cell[map.grid[x][y+1]].direction;
+	cell[map.grid[x][y]].calc = cell[map.grid[x][y+1]].calc;
 
-	cell[map.grid[new_x][new_y]].cell_type = old_type;
-	cell[map.grid[new_x][new_y]].mass = old_mass;
-	cell[map.grid[new_x][new_y]].direction = old_direction;
-	cell[map.grid[new_x][new_y]].calc = old_calc;
+	cell[map.grid[x][y+1]].cell_type = old_type;
+	cell[map.grid[x][y+1]].mass = old_mass;
+	cell[map.grid[x][y+1]].direction = old_direction;
+	/* prevents teleporting */
+	cell[map.grid[x][y+1]].calc = FALSE;
+}
+
+void sometimes_fill_bottom_cell(int x, int y) {
+	unsigned char new_current_mass, new_bottom_mass,
+		current_mass = cell[map.grid[x][y]].mass,
+		bottom_mass = cell[map.grid[x][y+1]].mass;
+
+	if(bottom_mass < MAX_MASS) {
+		new_bottom_mass = bottom_mass + current_mass;
+		if(new_bottom_mass >= MAX_MASS) {
+			new_current_mass = (new_bottom_mass - MAX_MASS <= 0) ? 0 : (new_bottom_mass - MAX_MASS);
+			new_bottom_mass = MAX_MASS;
+		}
+		else {
+			new_current_mass = 0;
+		}
+
+		cell[map.grid[x][y]].mass = new_current_mass;
+		cell[map.grid[x][y+1]].mass = new_bottom_mass;
+		//cell[map.grid[x][y+1]].calc = FALSE;
+	}
+
+}
+
+void sometimes_fill_adjacent_cells(int x, int y) {
+	unsigned char new_current_mass, new_left_mass, new_right_mass, left_mass, right_mass, direction,
+		current_mass = cell[map.grid[x][y]].mass;
+	//printf("x:%i, map.w:%i, left_mass:%i\n", x, map.w, cell[map.grid[x-1][y]].mass);
+	// within map
+	if((x-1 > 0) && (x+1 < map.w)) {
+		left_mass = cell[map.grid[x-1][y]].mass;
+		right_mass = cell[map.grid[x+1][y]].mass;
+		direction = cell[map.grid[x][y]].direction;
+
+		if((left_mass < current_mass && !(direction == RIGHT))) {
+			new_left_mass = ++left_mass;
+			new_current_mass = --current_mass;
+			cell[map.grid[x][y]].mass = new_current_mass;
+			cell[map.grid[x][y]].direction = LEFT;
+			cell[map.grid[x-1][y]].mass = new_left_mass;
+			cell[map.grid[x-1][y]].calc = FALSE;
+		}
+		if((right_mass < current_mass && !(direction == LEFT))) {
+			new_right_mass = ++right_mass;
+			new_current_mass = --current_mass;
+			cell[map.grid[x][y]].mass = new_current_mass;
+			cell[map.grid[x][y]].direction = RIGHT;
+			cell[map.grid[x+1][y]].mass = new_right_mass;
+			cell[map.grid[x+1][y]].calc = FALSE;
+		}
+	}
+}
+
+void update_cell_type(int x, int y) {
+	unsigned char type;
+
+	switch(cell[map.grid[x][y]].mass) {
+		case 0:	type = AIR;		break;
+		case 1:	type = WATER1;	break;
+		case 2:	type = WATER2;	break;
+		case 3:	type = WATER3;	break;
+		case 4:	type = WATER4;	break;
+		case 5:	type = WATER5;	break;
+	}
+	cell[map.grid[x][y]].cell_type = type;
 }
 
 void update_cells(void) {
@@ -706,12 +796,44 @@ void update_cells(void) {
 	for(x = 0; x < map.w; x++) {
 		for(y = 0; y < map.h; y++) {
 			/* within map */
-			if((y >= 0) && (x >= 0) && (y < map.h) && (x < map.w)) {
-				/* water falls down, through air and oil */
-				if(water_tile(x, y) && (air_tile(x, y+1) || oil_tile(x, y+1))) {
-					copy_cell(x, y, x, y+1);
+			if((y > 0) && (x > 0) && (y < map.h) && (x < map.w)) {
+				/* flow down into bottom cell */
+				if(water_cell(x, y) && (water_cell(x, y+1) || air_cell(x, y+1)) && !(cell[map.grid[x][y+1]].mass == MAX_MASS)) {
+					if(cell[map.grid[x][y]].calc) {
+						sometimes_fill_bottom_cell(x, y);
+					}
+				}
+
+				/* flow into left/right cell */
+				else if((water_cell(x, y) && (water_cell(x-1, y) || air_cell(x-1, y))) || (water_cell(x, y) && (water_cell(x+1, y) || air_cell(x+1, y)))) {
+					if(!(air_cell(x, y+1)) && cell[map.grid[x][y]].calc) {
+						sometimes_fill_adjacent_cells(x, y);
+					}
+				}
+
+				/* change cell_type in case water moved */
+				if (water_cell(x, y) || air_cell(x, y)) {
+					update_cell_type(x, y);
+				}
+
+				/* reset calc bit for next timestep */
+				if(cell[map.grid[x][y]].calc == FALSE) {
+					cell[map.grid[x][y]].calc = TRUE;
 				}
 			}
+		}
+	}
+}
+
+/* delete all cells */
+void clear_grid(void) {
+	int x, y;
+	for(x = 0; x < map.w; x++) {
+		for(y = 0; y < map.h; y++) {
+			cell[map.grid[x][y]].cell_type = AIR;
+			cell[map.grid[x][y]].direction = NONE;
+			cell[map.grid[x][y]].mass = 0;
+			cell[map.grid[x][y]].calc = TRUE;
 		}
 	}
 }
@@ -842,6 +964,9 @@ int main(int argc, char *argv[]) {
 							SDL_AddTimer (2000, msg_event, NULL);
 							show_save_msg = 1;
 							break;
+						case SDLK_F11:
+							clear_grid();
+							break;
 						default:
 							break;
 					}
@@ -862,8 +987,8 @@ int main(int argc, char *argv[]) {
 		}
 		move_player(&player); // and camera
 		place_and_destroy_cells(screen, event.button.x, event.button.y, &player);
-		input.mleft = 0; // uncomment for click once to delete one cell
-		input.mright = 0; // uncomment for click once to place one cell
+		//input.mleft = 0; // uncomment for click once to delete one cell
+		//input.mright = 0; // uncomment for click once to place one cell
 		update_cells();
 		draw(screen, mouse_x_ptr, mouse_y_ptr, &player, text, font, text_color, show_save_msg, save_message);
 
