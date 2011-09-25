@@ -21,8 +21,9 @@
 #define PLAYER_SPEED 4
 #define MAX_FALL_SPEED 20
 #define SCROLL_SPEED PLAYER_SPEED
-#define FLIMIT 30
+#define FLIMIT (1000/60)
 #define SAVE_EVENT (SDL_USEREVENT + 1)
+#define FLOW_EVENT (SDL_USEREVENT + 2)
 
 const unsigned char MAX_MASS = 5;
 const unsigned char MIN_MASS = 1;
@@ -618,7 +619,7 @@ void draw_cursor(SDL_Surface *screen, int *x, int *y) {
 	SDL_BlitSurface(cursor, &src, screen, &dst);
 }
 
-void draw_text(struct Player *p, SDL_Surface *screen, SDL_Surface *text, TTF_Font *font, SDL_Color color) {
+void draw_text(struct Player *p, SDL_Surface *screen, TTF_Font *font, SDL_Color color) {
 	SDL_Rect rect = {0, 0, 0, 0};
 	char item[8];
 	switch(p->selected) {
@@ -642,23 +643,21 @@ void draw_text(struct Player *p, SDL_Surface *screen, SDL_Surface *text, TTF_Fon
 		break;
 	}
 	SDL_Color bgcolor = {0, 0, 0};
-	text = TTF_RenderText_Shaded(font, item, color, bgcolor);
-	SDL_BlitSurface(text, NULL, screen, &rect);
+	SDL_BlitSurface(TTF_RenderText_Shaded(font, item, color, bgcolor), NULL, screen, &rect);
 }
 
-void draw_save_msg(struct Player *p, SDL_Surface *screen, SDL_Surface *save_message, TTF_Font *font, SDL_Color color) {
+void draw_save_msg(struct Player *p, SDL_Surface *screen, TTF_Font *font, SDL_Color color) {
 	SDL_Rect rect = {0, screen->h - TTF_FontHeight(font), 0, 0};
 	SDL_Color bgcolor = {0, 0, 0};
-	save_message = TTF_RenderText_Shaded(font, " Map saved... ", color, bgcolor);
-	SDL_BlitSurface(save_message, NULL, screen, &rect);
+	SDL_BlitSurface(TTF_RenderText_Shaded(font, " Map saved... ", color, bgcolor), NULL, screen, &rect);
 }
 
-void draw(SDL_Surface *screen, int *mouse_x, int *mouse_y, struct Player *p, SDL_Surface *text, TTF_Font *font, SDL_Color color, int sv_msg, SDL_Surface *save_message) {
+void draw(SDL_Surface *screen, int *mouse_x, int *mouse_y, struct Player *p, TTF_Font *font, SDL_Color color, int sv_msg) {
 	draw_background(screen);
 	draw_all_cells(screen);
-	draw_text(p, screen, text, font, color);
+	draw_text(p, screen, font, color);
 	if(sv_msg) {
-		draw_save_msg(p, screen, save_message, font, color);
+		draw_save_msg(p, screen, font, color);
 	}
 	draw_player(screen, p);
 	draw_cursor(screen, mouse_x, mouse_y);
@@ -697,11 +696,32 @@ Uint32 msg_event(Uint32 interval, void *param) {
 	event.user = userevent;
 
 	/* create new event */
-	SDL_PushEvent (&event);
+	SDL_PushEvent(&event);
 
 	/* returning 0 instead of interval, to stop timer */
 	interval = 0;
 	return interval;
+}
+
+Uint32 flow_event(Uint32 delay, void *param) {
+	SDL_Event f_event;
+	SDL_UserEvent f_userevent;
+
+	/* init userevent */
+	f_userevent.type = FLOW_EVENT;
+	f_userevent.code = 0;
+	f_userevent.data1 = NULL;
+	f_userevent.data2 = NULL;
+
+	/* init a new event */
+	f_event.type = FLOW_EVENT;
+	f_event.user = f_userevent;
+
+	/* create new event */
+	SDL_PushEvent(&f_event);
+
+	/* return 0 instead of interval, to stop timer */
+	return delay;
 }
 
 void sometimes_fill_bottom_cell(int x, int y) {
@@ -712,7 +732,7 @@ void sometimes_fill_bottom_cell(int x, int y) {
 	if(bottom_mass < MAX_MASS) {
 		new_bottom_mass = bottom_mass + current_mass;
 		if(new_bottom_mass >= MAX_MASS) {
-			new_current_mass = (new_bottom_mass - MAX_MASS <= 0) ? 0 : (new_bottom_mass - MAX_MASS);
+			new_current_mass = (new_bottom_mass - MAX_MASS == 0) ? 0 : (new_bottom_mass - MAX_MASS);
 			new_bottom_mass = MAX_MASS;
 		}
 		else {
@@ -745,6 +765,25 @@ void sometimes_fill_left_cell(int x, int y) {
 	}
 }
 
+void sometimes_fill_right_cell(int x, int y) {
+	unsigned char new_current_mass, new_right_mass, right_mass, direction,
+		current_mass = cell[map.grid[x][y]].mass;
+	// within map
+	if(x+1 < map.w) {
+		right_mass = cell[map.grid[x+1][y]].mass;
+		direction = cell[map.grid[x][y]].direction;
+
+		if((right_mass < current_mass)) {
+			new_right_mass = ++right_mass;
+			new_current_mass = --current_mass;
+			cell[map.grid[x][y]].mass = new_current_mass;
+			cell[map.grid[x][y]].direction = RIGHT;
+			cell[map.grid[x+1][y]].mass = new_right_mass;
+			cell[map.grid[x+1][y]].calc = FALSE;
+		}
+	}
+}
+
 void update_cell_type(int x, int y) {
 	unsigned char type;
 
@@ -757,6 +796,10 @@ void update_cell_type(int x, int y) {
 		case 5:	type = WATER5;	break;
 	}
 	cell[map.grid[x][y]].cell_type = type;
+}
+
+unsigned char remaining_mass(int x, int y) {
+	return cell[map.grid[x][y]].mass;
 }
 
 void update_cells(void) {
@@ -774,22 +817,32 @@ void update_cells(void) {
 					}
 				}
 
-				/* flow into left/right cell */
-				else if((water_cell(x, y) && (water_cell(x-1, y) || air_cell(x-1, y)))) {
+				/* flow into left cell */
+				if(remaining_mass(x, y) > 0 && water_cell(x, y) && (water_cell(x-1, y) || air_cell(x-1, y))) {
 					if(!(air_cell(x, y+1)) && cell[map.grid[x][y]].calc) {
 						sometimes_fill_left_cell(x, y);
 					}
 				}
 
-				/* change cell_type in case water moved */
-				if (water_cell(x, y) || air_cell(x, y)) {
-					update_cell_type(x, y);
+				/* flow into right cell */
+				if(remaining_mass(x, y) > 0 && water_cell(x, y) && (water_cell(x+1, y) || air_cell(x+1, y))) {
+					if(!(air_cell(x, y+1)) && cell[map.grid[x][y]].calc) {
+						sometimes_fill_right_cell(x, y);
+					}
 				}
 
 				/* reset calc bit for next timestep */
 				if(cell[map.grid[x][y]].calc == FALSE) {
 					cell[map.grid[x][y]].calc = TRUE;
 				}
+			}
+		}
+	}
+	for(x = 0; x < map.w; x++) {
+		for(y = 0; y < map.h; y++) {
+			/* change cell_type in case water moved */
+			if (water_cell(x, y) || air_cell(x, y)) {
+				update_cell_type(x, y);
 			}
 		}
 	}
@@ -815,10 +868,10 @@ int main(int argc, char *argv[]) {
 	}
 	atexit(SDL_Quit);
 
-	SDL_Surface *screen, *text, *save_message;
+	SDL_Surface *screen;
 	SDL_Event event;
 	TTF_Font *font;
-	int i, done = 0, mouse_x = 0, mouse_y = 0;
+	int i, done = 0, mouse_x = 0, mouse_y = 0, liquid_flow = 0;
 	unsigned int frames = SDL_GetTicks() + FLIMIT;
 	unsigned int *frame_limit;
 	frame_limit = &frames;
@@ -833,6 +886,8 @@ int main(int argc, char *argv[]) {
 		printf("Can't set video mode: %s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
 	}
+
+	SDL_TimerID flow_timer;
 
 	/* set window title */
 	SDL_WM_SetCaption("2D SIMULATION", NULL);
@@ -857,6 +912,9 @@ int main(int argc, char *argv[]) {
 	SDL_Color text_color = {255, 255, 255};
 	font = TTF_OpenFont("media/fonts/slkscrb.ttf", 8);
 
+	/* init flow event timer */
+	flow_timer = SDL_AddTimer(100, flow_event, NULL);
+
 	/* game loop */
 	while(!done) {
 		while(SDL_PollEvent(&event)) {
@@ -867,6 +925,9 @@ int main(int argc, char *argv[]) {
 				case SAVE_EVENT:
 					show_save_msg = 0;
 					//printf("SDL_USEREVENT: %i\n", SAVE_EVENT);
+					break;
+				case FLOW_EVENT:
+					liquid_flow = 1;
 					break;
 				case SDL_MOUSEMOTION:
 					*mouse_x_ptr = event.motion.x;
@@ -931,7 +992,7 @@ int main(int argc, char *argv[]) {
 							break;
 						case SDLK_F12:
 							save_map();
-							SDL_AddTimer (2000, msg_event, NULL);
+							SDL_AddTimer(2000, msg_event, NULL);
 							show_save_msg = 1;
 							break;
 						case SDLK_F11:
@@ -959,8 +1020,11 @@ int main(int argc, char *argv[]) {
 		place_and_destroy_cells(screen, event.button.x, event.button.y, &player);
 		//input.mleft = 0; // uncomment for click once to delete one cell
 		//input.mright = 0; // uncomment for click once to place one cell
-		update_cells();
-		draw(screen, mouse_x_ptr, mouse_y_ptr, &player, text, font, text_color, show_save_msg, save_message);
+		if(liquid_flow == 1) {
+			liquid_flow = 0;
+			update_cells();
+		}
+		draw(screen, mouse_x_ptr, mouse_y_ptr, &player, font, text_color, show_save_msg);
 
 		delay(frame_limit);
 		*frame_limit = SDL_GetTicks() + FLIMIT;
@@ -975,7 +1039,5 @@ int main(int argc, char *argv[]) {
 	SDL_FreeSurface(tileset);
 	SDL_FreeSurface(player_image);
 	SDL_FreeSurface(cursor);
-	SDL_FreeSurface(text);
-	SDL_FreeSurface(save_message);
 	return 0;
 }

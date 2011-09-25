@@ -10,6 +10,7 @@ CFLAGS = `sdl-config --cflags` -lSDL_image -lSDL_ttf
 LFLAGS = `sdl-config --libs` -lSDL_image -lSDL_ttf
 OBJS   = main.o
 PROG = sim
+DBG = $(PROG)_dbg
 CXX = gcc
 
 # top-level rule to create the program.
@@ -25,4 +26,8 @@ $(PROG): $(OBJS)
 
 # cleaning everything that can be automatically recreated with "make".
 clean:
-	rm $(PROG) *.o
+	rm $(PROG) $(DBG) *.o
+
+# compile for debugging (run: "ddd <DBG>")
+debug:
+	$(CXX) -ggdb -o $(DBG) main.c $(LFLAGS) $(CFLAGS)
