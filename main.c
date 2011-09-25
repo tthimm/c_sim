@@ -355,7 +355,7 @@ void draw_background(SDL_Surface *scr) {
 }
 
 void load_tileset(void) {
-	temp = IMG_Load("media/images/tileset.png");
+	temp = IMG_Load("media/images/tileset_full_debug.png");
 	SDL_SetColorKey(temp, SDL_SRCCOLORKEY, SDL_MapRGB(temp->format, 255, 0, 0));
 	/*SDL_SetAlpha(tileset, SDL_SRCALPHA, 170);*/
 	tileset = SDL_DisplayFormat(temp);
@@ -784,6 +784,10 @@ void sometimes_fill_right_cell(int x, int y) {
 	}
 }
 
+unsigned char remaining_mass(int x, int y) {
+	return cell[map.grid[x][y]].mass;
+}
+
 void update_cell_type(int x, int y) {
 	unsigned char type;
 
@@ -798,8 +802,30 @@ void update_cell_type(int x, int y) {
 	cell[map.grid[x][y]].cell_type = type;
 }
 
-unsigned char remaining_mass(int x, int y) {
-	return cell[map.grid[x][y]].mass;
+void fill_left_or_right_cell(int x, int y) {
+	int left_cell_mass, right_cell_mass;
+	if(x-1 >= 0 && x+1 <= map.w) {
+		left_cell_mass = cell[map.grid[x-1][y]].mass;
+		right_cell_mass = cell[map.grid[x+1][y]].mass;
+		switch(cell[map.grid[x][y]].direction) {
+			case LEFT:
+				if(left_cell_mass <= right_cell_mass) {
+					sometimes_fill_left_cell(x, y);
+				}
+				else {
+					sometimes_fill_right_cell(x, y);
+				}
+				break;
+			case RIGHT:
+				if(right_cell_mass <= left_cell_mass) {
+					sometimes_fill_right_cell(x, y);
+				}
+				else {
+					sometimes_fill_left_cell(x, y);
+				}
+				break;
+		}
+	}
 }
 
 void update_cells(void) {
@@ -815,6 +841,11 @@ void update_cells(void) {
 					if(cell[map.grid[x][y]].calc) {
 						sometimes_fill_bottom_cell(x, y);
 					}
+				}
+
+				/* if direction flag is set and both neighbours are emtpy/not full, move into flow direction */
+				if(remaining_mass(x, y) > 0 && water_cell(x, y) && !air_cell(x, y+1) && cell[map.grid[x][y]].calc) {
+					fill_left_or_right_cell(x, y);
 				}
 
 				/* flow into left cell */
@@ -912,7 +943,7 @@ int main(int argc, char *argv[]) {
 	font = TTF_OpenFont("media/fonts/slkscrb.ttf", 8);
 
 	/* init flow event timer */
-	flow_timer = SDL_AddTimer(100, flow_event, NULL);
+	flow_timer = SDL_AddTimer(10, flow_event, NULL);
 
 	/* game loop */
 	while(!done) {
