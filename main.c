@@ -879,6 +879,7 @@ int main(int argc, char *argv[]) {
 	mouse_x_ptr = &mouse_x;
 	mouse_y_ptr = &mouse_y;
 	int show_save_msg = 0;
+	SDL_TimerID flow_timer;
 
 	screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_DOUBLEBUF | SDL_HWSURFACE);
 	//screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 16, SDL_DOUBLEBUF | SDL_FULLSCREEN);
@@ -886,8 +887,6 @@ int main(int argc, char *argv[]) {
 		printf("Can't set video mode: %s\n", SDL_GetError());
 		exit(EXIT_FAILURE);
 	}
-
-	SDL_TimerID flow_timer;
 
 	/* set window title */
 	SDL_WM_SetCaption("2D SIMULATION", NULL);
@@ -924,7 +923,6 @@ int main(int argc, char *argv[]) {
 					break;
 				case SAVE_EVENT:
 					show_save_msg = 0;
-					//printf("SDL_USEREVENT: %i\n", SAVE_EVENT);
 					break;
 				case FLOW_EVENT:
 					liquid_flow = 1;
@@ -1020,24 +1018,28 @@ int main(int argc, char *argv[]) {
 		place_and_destroy_cells(screen, event.button.x, event.button.y, &player);
 		//input.mleft = 0; // uncomment for click once to delete one cell
 		//input.mright = 0; // uncomment for click once to place one cell
-		if(liquid_flow == 1) {
-			liquid_flow = 0;
+
+		if(liquid_flow) {
 			update_cells();
+			liquid_flow = 0;
 		}
+
 		draw(screen, mouse_x_ptr, mouse_y_ptr, &player, font, text_color, show_save_msg);
 
 		delay(frame_limit);
 		*frame_limit = SDL_GetTicks() + FLIMIT;
 	}
 
-	/* free tiles/new_tiles array in reverse order */
+	/* free cell array in reverse order */
 	for(i = 0; i < map.h; i++) {
 		free(map.grid[i]);
 	}
 	free(map.grid);
 
+	/* free all surfaces */
 	SDL_FreeSurface(tileset);
 	SDL_FreeSurface(player_image);
 	SDL_FreeSurface(cursor);
+
 	return 0;
 }
