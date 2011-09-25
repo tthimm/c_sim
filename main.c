@@ -354,7 +354,7 @@ void draw_background(SDL_Surface *scr) {
 }
 
 void load_tileset(void) {
-	temp = IMG_Load("media/images/tileset_full.png");
+	temp = IMG_Load("media/images/tileset.png");
 	SDL_SetColorKey(temp, SDL_SRCCOLORKEY, SDL_MapRGB(temp->format, 255, 0, 0));
 	/*SDL_SetAlpha(tileset, SDL_SRCALPHA, 170);*/
 	tileset = SDL_DisplayFormat(temp);
@@ -704,27 +704,6 @@ Uint32 msg_event(Uint32 interval, void *param) {
 	return interval;
 }
 
-void move_cell_down(int x, int y) {
-	int old_type, old_mass, old_direction, old_calc;
-	/* save old states */
-	old_type = cell[map.grid[x][y]].cell_type;
-	old_mass = cell[map.grid[x][y]].mass;
-	old_direction = cell[map.grid[x][y]].direction;
-	old_calc = cell[map.grid[x][y]].calc;
-
-	/* switch states of the two cells */
-	cell[map.grid[x][y]].cell_type = cell[map.grid[x][y+1]].cell_type;
-	cell[map.grid[x][y]].mass = cell[map.grid[x][y+1]].mass;
-	cell[map.grid[x][y]].direction = cell[map.grid[x][y+1]].direction;
-	cell[map.grid[x][y]].calc = cell[map.grid[x][y+1]].calc;
-
-	cell[map.grid[x][y+1]].cell_type = old_type;
-	cell[map.grid[x][y+1]].mass = old_mass;
-	cell[map.grid[x][y+1]].direction = old_direction;
-	/* prevents teleporting */
-	cell[map.grid[x][y+1]].calc = FALSE;
-}
-
 void sometimes_fill_bottom_cell(int x, int y) {
 	unsigned char new_current_mass, new_bottom_mass,
 		current_mass = cell[map.grid[x][y]].mass,
@@ -742,36 +721,26 @@ void sometimes_fill_bottom_cell(int x, int y) {
 
 		cell[map.grid[x][y]].mass = new_current_mass;
 		cell[map.grid[x][y+1]].mass = new_bottom_mass;
-		//cell[map.grid[x][y+1]].calc = FALSE;
+		cell[map.grid[x][y+1]].calc = FALSE;
 	}
 
 }
 
-void sometimes_fill_adjacent_cells(int x, int y) {
-	unsigned char new_current_mass, new_left_mass, new_right_mass, left_mass, right_mass, direction,
+void sometimes_fill_left_cell(int x, int y) {
+	unsigned char new_current_mass, new_left_mass, left_mass, direction,
 		current_mass = cell[map.grid[x][y]].mass;
-	//printf("x:%i, map.w:%i, left_mass:%i\n", x, map.w, cell[map.grid[x-1][y]].mass);
 	// within map
-	if((x-1 > 0) && (x+1 < map.w)) {
+	if(x-1 > 0) {
 		left_mass = cell[map.grid[x-1][y]].mass;
-		right_mass = cell[map.grid[x+1][y]].mass;
 		direction = cell[map.grid[x][y]].direction;
 
-		if((left_mass < current_mass && !(direction == RIGHT))) {
+		if((left_mass < current_mass)) {
 			new_left_mass = ++left_mass;
 			new_current_mass = --current_mass;
 			cell[map.grid[x][y]].mass = new_current_mass;
 			cell[map.grid[x][y]].direction = LEFT;
 			cell[map.grid[x-1][y]].mass = new_left_mass;
 			cell[map.grid[x-1][y]].calc = FALSE;
-		}
-		if((right_mass < current_mass && !(direction == LEFT))) {
-			new_right_mass = ++right_mass;
-			new_current_mass = --current_mass;
-			cell[map.grid[x][y]].mass = new_current_mass;
-			cell[map.grid[x][y]].direction = RIGHT;
-			cell[map.grid[x+1][y]].mass = new_right_mass;
-			cell[map.grid[x+1][y]].calc = FALSE;
 		}
 	}
 }
@@ -797,6 +766,7 @@ void update_cells(void) {
 		for(y = 0; y < map.h; y++) {
 			/* within map */
 			if((y > 0) && (x > 0) && (y < map.h) && (x < map.w)) {
+
 				/* flow down into bottom cell */
 				if(water_cell(x, y) && (water_cell(x, y+1) || air_cell(x, y+1)) && !(cell[map.grid[x][y+1]].mass == MAX_MASS)) {
 					if(cell[map.grid[x][y]].calc) {
@@ -805,9 +775,9 @@ void update_cells(void) {
 				}
 
 				/* flow into left/right cell */
-				else if((water_cell(x, y) && (water_cell(x-1, y) || air_cell(x-1, y))) || (water_cell(x, y) && (water_cell(x+1, y) || air_cell(x+1, y)))) {
+				else if((water_cell(x, y) && (water_cell(x-1, y) || air_cell(x-1, y)))) {
 					if(!(air_cell(x, y+1)) && cell[map.grid[x][y]].calc) {
-						sometimes_fill_adjacent_cells(x, y);
+						sometimes_fill_left_cell(x, y);
 					}
 				}
 
