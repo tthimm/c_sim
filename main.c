@@ -51,7 +51,7 @@ struct Bg_color {
 	int r;
 	int g;
 	int b;
-} bg = {47, 136, 248};
+} bg = {47, 136, 248}; // {164, 211, 238};
 
 struct Player {
 	unsigned int x, y, w, h, on_ground, selected;
