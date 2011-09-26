@@ -749,38 +749,32 @@ void sometimes_fill_bottom_cell(int x, int y) {
 void sometimes_fill_left_cell(int x, int y) {
 	unsigned char new_current_mass, new_left_mass, left_mass, direction,
 		current_mass = cell[map.grid[x][y]].mass;
-	// within map
-	if(x-1 > 0) {
-		left_mass = cell[map.grid[x-1][y]].mass;
-		direction = cell[map.grid[x][y]].direction;
+	left_mass = cell[map.grid[x-1][y]].mass;
+	direction = cell[map.grid[x][y]].direction;
 
-		if((left_mass < current_mass)) {
-			new_left_mass = ++left_mass;
-			new_current_mass = --current_mass;
-			cell[map.grid[x][y]].mass = new_current_mass;
-			cell[map.grid[x][y]].direction = LEFT;
-			cell[map.grid[x-1][y]].mass = new_left_mass;
-			cell[map.grid[x-1][y]].calc = FALSE;
-		}
+	if((left_mass < current_mass)) {
+		new_left_mass = ++left_mass;
+		new_current_mass = --current_mass;
+		cell[map.grid[x][y]].mass = new_current_mass;
+		cell[map.grid[x][y]].direction = LEFT;
+		cell[map.grid[x-1][y]].mass = new_left_mass;
+		cell[map.grid[x-1][y]].calc = FALSE;
 	}
 }
 
 void sometimes_fill_right_cell(int x, int y) {
 	unsigned char new_current_mass, new_right_mass, right_mass, direction,
 		current_mass = cell[map.grid[x][y]].mass;
-	// within map
-	if(x+1 < map.w) {
-		right_mass = cell[map.grid[x+1][y]].mass;
-		direction = cell[map.grid[x][y]].direction;
+	right_mass = cell[map.grid[x+1][y]].mass;
+	direction = cell[map.grid[x][y]].direction;
 
-		if((right_mass < current_mass)) {
-			new_right_mass = ++right_mass;
-			new_current_mass = --current_mass;
-			cell[map.grid[x][y]].mass = new_current_mass;
-			cell[map.grid[x][y]].direction = RIGHT;
-			cell[map.grid[x+1][y]].mass = new_right_mass;
-			cell[map.grid[x+1][y]].calc = FALSE;
-		}
+	if((right_mass < current_mass)) {
+		new_right_mass = ++right_mass;
+		new_current_mass = --current_mass;
+		cell[map.grid[x][y]].mass = new_current_mass;
+		cell[map.grid[x][y]].direction = RIGHT;
+		cell[map.grid[x+1][y]].mass = new_right_mass;
+		cell[map.grid[x+1][y]].calc = FALSE;
 	}
 }
 
@@ -804,27 +798,25 @@ void update_cell_type(int x, int y) {
 
 void fill_left_or_right_cell(int x, int y) {
 	int left_cell_mass, right_cell_mass;
-	if(x-1 >= 0 && x+1 <= map.w) {
 		left_cell_mass = cell[map.grid[x-1][y]].mass;
 		right_cell_mass = cell[map.grid[x+1][y]].mass;
-		switch(cell[map.grid[x][y]].direction) {
-			case LEFT:
-				if(left_cell_mass <= right_cell_mass) {
-					sometimes_fill_left_cell(x, y);
-				}
-				else {
-					sometimes_fill_right_cell(x, y);
-				}
-				break;
-			case RIGHT:
-				if(right_cell_mass <= left_cell_mass) {
-					sometimes_fill_right_cell(x, y);
-				}
-				else {
-					sometimes_fill_left_cell(x, y);
-				}
-				break;
-		}
+	switch(cell[map.grid[x][y]].direction) {
+		case LEFT:
+			if(left_cell_mass <= right_cell_mass) {
+				sometimes_fill_left_cell(x, y);
+			}
+			else {
+				sometimes_fill_right_cell(x, y);
+			}
+			break;
+		case RIGHT:
+			if(right_cell_mass <= left_cell_mass) {
+				sometimes_fill_right_cell(x, y);
+			}
+			else {
+				sometimes_fill_left_cell(x, y);
+			}
+			break;
 	}
 }
 
@@ -834,7 +826,7 @@ void update_cells(void) {
 	for(x = 0; x < map.w; x++) {
 		for(y = 0; y < map.h; y++) {
 			/* within map */
-			if((y > 0) && (x > 0) && (y < map.h) && (x < map.w)) {
+			if((y > 0) && (x > 0) && (y+1 < map.h) && (x+1 < map.w)) {
 
 				/* flow down into bottom cell */
 				if(water_cell(x, y) && (water_cell(x, y+1) || air_cell(x, y+1)) && !(cell[map.grid[x][y+1]].mass == MAX_MASS)) {
