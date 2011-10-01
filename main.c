@@ -38,7 +38,7 @@ struct Cell {
 	unsigned direction:2;	// 0/4
 	unsigned mass:4;		// 0/16
 	unsigned calc:1;		// 0/1
-} cell[2048];
+} cell[262144];
 
 struct Map {
 	char *filename;
@@ -219,7 +219,7 @@ int main(int argc, char *argv[]) {
 	font = TTF_OpenFont("media/fonts/slkscrb.ttf", 8);
 
 	/* init flow event timer */
-	flow_timer = SDL_AddTimer(10, flow_event, NULL);
+	flow_timer = SDL_AddTimer(30, flow_event, NULL);
 
 	/* game loop */
 	while(!done) {
@@ -359,7 +359,7 @@ void out_of_bounds(int x, int y) {
 }
 
 unsigned char get_cell_type(int x, int y) {
-	if(x >= 0 && y >= 0 && x < map.w && y < map.w) {
+	if(x >= 0 && y >= 0 && x < map.w && y < map.h) {
 		return cell[map.grid[x][y]].cell_type;
 	}
 	else {
@@ -373,7 +373,7 @@ void set_cell_type(int x, int y, unsigned char value) {
 }
 
 unsigned char get_cell_direction(int x, int y) {
-	if(x >= 0 && y >= 0 && x < map.w && y < map.w) {
+	if(x >= 0 && y >= 0 && x < map.w && y < map.h) {
 		return cell[map.grid[x][y]].direction;
 	}
 	else {
@@ -387,7 +387,7 @@ void set_cell_direction(int x, int y, unsigned char value) {
 }
 
 unsigned char get_cell_mass(int x, int y) {
-	if(x >= 0 && y >= 0 && x < map.w && y < map.w) {
+	if(x >= 0 && y >= 0 && x < map.w && y < map.h) {
 		return cell[map.grid[x][y]].mass;
 	}
 	else {
@@ -401,7 +401,7 @@ void set_cell_mass(int x, int y, unsigned char value) {
 }
 
 unsigned char get_cell_calc(int x, int y) {
-	if(x >= 0 && y >= 0 && x < map.w && y < map.w) {
+	if(x >= 0 && y >= 0 && x < map.w && y < map.h) {
 		return cell[map.grid[x][y]].calc;
 	}
 	else {
@@ -688,7 +688,7 @@ void draw_background(SDL_Surface *scr) {
 }
 
 void load_tileset(void) {
-	temp = IMG_Load("media/images/tileset_full_debug.png");
+	temp = IMG_Load("media/images/tileset_full.png");
 	SDL_SetColorKey(temp, SDL_SRCCOLORKEY, SDL_MapRGB(temp->format, 255, 0, 0));
 	/*SDL_SetAlpha(tileset, SDL_SRCALPHA, 170);*/
 	tileset = SDL_DisplayFormat(temp);
@@ -887,7 +887,7 @@ void place_cell(int x, int y, struct Player *p) {
 		/* not solid at new cell position */
 		if(!solid(cam_x, cam_y)) {
 			set_cell_type(dx, dy, p->selected);
-			set_cell_mass(dx, dy, MAX_MASS);
+			set_cell_mass(dx, dy, ((p->selected == WATER5) ? MAX_MASS : 0));
 			set_cell_direction(dx, dy, NONE);
 			set_cell_calc(dx, dy, TRUE);
 		}
