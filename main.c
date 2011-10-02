@@ -157,8 +157,6 @@ void sometimes_fill_left_cell(int x, int y);
 
 void sometimes_fill_right_cell(int x, int y);
 
-unsigned char remaining_mass(int x, int y);
-
 void update_cell_type(int x, int y);
 
 void fill_left_or_right_cell(int x, int y);
@@ -323,7 +321,7 @@ int main(int argc, char *argv[]) {
 		}
 		move_player(&player); // and camera
 		place_and_destroy_cells(screen, event.button.x, event.button.y, &player);
-		//input.mleft = 0; // uncomment for click once to delete one cell
+		input.mleft = 0; // uncomment for click once to delete one cell
 		//input.mright = 0; // uncomment for click once to place one cell
 
 		if(liquid_flow) {
@@ -1058,67 +1056,45 @@ Uint32 flow_event(Uint32 delay, void *param) {
 }
 
 void sometimes_fill_bottom_cell(int x, int y) {
-	unsigned char new_current_mass, new_bottom_mass,
-		current_mass = get_cell_mass(x, y),
-		bottom_mass = get_cell_mass(x, y+1);
+	unsigned char current_mass = get_cell_mass(x, y);
+	unsigned char bottom_mass = get_cell_mass(x, y+1);
 
-	if(bottom_mass < MAX_MASS) {
-		new_bottom_mass = bottom_mass + current_mass;
-		if(new_bottom_mass >= MAX_MASS) {
-			new_current_mass = (new_bottom_mass - MAX_MASS == 0) ? 0 : (new_bottom_mass - MAX_MASS);
-			new_bottom_mass = MAX_MASS;
-		}
-		else {
-			new_current_mass = 0;
-		}
-
-		set_cell_mass(x, y, new_current_mass);
-		set_cell_mass(x, y+1, new_bottom_mass);
-		set_cell_calc(x, y+1, FALSE);
+	if(bottom_mass < MAX_MASS && current_mass >= MIN_MASS) {
+		set_cell_mass(x, y, --current_mass);
+		set_cell_mass(x, y+1, ++bottom_mass);
+		//set_cell_calc(x, y+1, FALSE);
 	}
 
 }
 
 void sometimes_fill_left_cell(int x, int y) {
-	unsigned char new_current_mass, new_left_mass, left_mass, direction,
-		current_mass = get_cell_mass(x, y);
-	left_mass = get_cell_mass(x-1, y);
-	direction = get_cell_direction(x, y);
+	unsigned char current_mass = get_cell_mass(x, y);
+	unsigned char left_mass = get_cell_mass(x-1, y);
 
-	if((left_mass < current_mass)) {
-		new_left_mass = ++left_mass;
-		new_current_mass = --current_mass;
-		set_cell_mass(x, y, new_current_mass);
+	if(left_mass < current_mass && get_cell_direction(x, y) != RIGHT && current_mass >= MIN_MASS) {
+		set_cell_mass(x, y, --current_mass);
 		set_cell_direction(x, y, LEFT);
-		set_cell_mass(x-1, y, new_left_mass);
+		set_cell_mass(x-1, y, ++left_mass);
 		set_cell_calc(x-1, y, FALSE);
 	}
 }
 
 void sometimes_fill_right_cell(int x, int y) {
-	unsigned char new_current_mass, new_right_mass, right_mass, direction,
-		current_mass = cell[map.grid[x][y]].mass;
-	right_mass = get_cell_mass(x+1, y);
-	direction = get_cell_direction(x, y);
+	unsigned char current_mass = get_cell_mass(x, y);
+	unsigned char right_mass = get_cell_mass(x+1, y);
 
-	if((right_mass < current_mass)) {
-		new_right_mass = ++right_mass;
-		new_current_mass = --current_mass;
-		set_cell_mass(x, y, new_current_mass);
+	if(right_mass < current_mass && get_cell_direction(x, y) != LEFT && current_mass >= MIN_MASS) {
+		set_cell_mass(x, y, --current_mass);
 		set_cell_direction(x, y, RIGHT);
-		set_cell_mass(x+1, y, new_right_mass);
+		set_cell_mass(x+1, y, ++right_mass);
 		set_cell_calc(x+1, y, FALSE);
 	}
-}
-
-unsigned char remaining_mass(int x, int y) {
-	return get_cell_mass(x, y);
 }
 
 void update_cell_type(int x, int y) {
 	unsigned char type;
 
-	switch(cell[map.grid[x][y]].mass) {
+	switch(get_cell_mass(x, y)) {
 		case 0:	type = AIR;		break;
 		case 1:	type = WATER1;	break;
 		case 2:	type = WATER2;	break;
@@ -1129,16 +1105,20 @@ void update_cell_type(int x, int y) {
 	set_cell_type(x, y, type);
 }
 
+/* if current cell has direction flag, flow into direction cell
+ * if current cell has less (or same) mass than opposite direction cell */
 void fill_left_or_right_cell(int x, int y) {
 	int left_cell_mass, right_cell_mass;
-		left_cell_mass = get_cell_mass(x-1, y);
-		right_cell_mass = get_cell_mass(x+1, y);
+	left_cell_mass = get_cell_mass(x-1, y);
+	right_cell_mass = get_cell_mass(x+1, y);
+
 	switch(get_cell_direction(x, y)) {
 		case LEFT:
 			if(left_cell_mass <= right_cell_mass) {
 				sometimes_fill_left_cell(x, y);
 			}
 			else {
+				set_cell_direction(x, y, RIGHT);
 				sometimes_fill_right_cell(x, y);
 			}
 			break;
@@ -1147,6 +1127,7 @@ void fill_left_or_right_cell(int x, int y) {
 				sometimes_fill_right_cell(x, y);
 			}
 			else {
+				set_cell_direction(x, y, LEFT);
 				sometimes_fill_left_cell(x, y);
 			}
 			break;
@@ -1169,19 +1150,19 @@ void update_cells(void) {
 				}
 
 				/* if direction flag is set and both neighbours are emtpy/not full, move into flow direction */
-				if(remaining_mass(x, y) > 0 && water_cell(x, y) && !air_cell(x, y+1) && get_cell_calc(x, y)) {
+				if(get_cell_mass(x, y) > 0 && water_cell(x, y) && !air_cell(x, y+1) && get_cell_calc(x, y)) {
 					fill_left_or_right_cell(x, y);
 				}
 
 				/* flow into left cell */
-				if(remaining_mass(x, y) > 0 && water_cell(x, y) && (water_cell(x-1, y) || air_cell(x-1, y))) {
+				if(get_cell_mass(x, y) > 0 && water_cell(x, y) && (water_cell(x-1, y) || air_cell(x-1, y))) {
 					if(!(air_cell(x, y+1)) && get_cell_calc(x, y)) {
 						sometimes_fill_left_cell(x, y);
 					}
 				}
 
 				/* flow into right cell */
-				if(remaining_mass(x, y) > 0 && water_cell(x, y) && (water_cell(x+1, y) || air_cell(x+1, y))) {
+				if(get_cell_mass(x, y) > 0 && water_cell(x, y) && (water_cell(x+1, y) || air_cell(x+1, y))) {
 					if(!(air_cell(x, y+1)) && get_cell_calc(x, y)) {
 						sometimes_fill_right_cell(x, y);
 					}
