@@ -686,7 +686,7 @@ void draw_background(SDL_Surface *scr) {
 }
 
 void load_tileset(void) {
-	temp = IMG_Load("media/images/tileset_full_debug.png");
+	temp = IMG_Load("media/images/tileset.png");
 	SDL_SetColorKey(temp, SDL_SRCCOLORKEY, SDL_MapRGB(temp->format, 255, 0, 0));
 	/*SDL_SetAlpha(tileset, SDL_SRCALPHA, 170);*/
 	tileset = SDL_DisplayFormat(temp);
