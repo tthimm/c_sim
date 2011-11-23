@@ -165,6 +165,8 @@ void update_cells(void);
 
 void clear_grid(void);
 
+void sometimes_fall_down(int x, int y);
+
 
 int main(int argc, char *argv[]) {
 	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) == -1) {
@@ -1062,7 +1064,6 @@ void sometimes_fill_bottom_cell(int x, int y) {
 	if(bottom_mass < MAX_MASS && current_mass >= MIN_MASS) {
 		set_cell_mass(x, y, --current_mass);
 		set_cell_mass(x, y+1, ++bottom_mass);
-		//set_cell_calc(x, y+1, FALSE);
 	}
 
 }
@@ -1071,9 +1072,8 @@ void sometimes_fill_left_cell(int x, int y) {
 	unsigned char current_mass = get_cell_mass(x, y);
 	unsigned char left_mass = get_cell_mass(x-1, y);
 
-	if(left_mass < current_mass && get_cell_direction(x, y) != RIGHT && current_mass >= MIN_MASS) {
+	if(left_mass < current_mass && get_cell_direction(x, y) && current_mass >= MIN_MASS) {
 		set_cell_mass(x, y, --current_mass);
-		set_cell_direction(x, y, LEFT);
 		set_cell_mass(x-1, y, ++left_mass);
 		set_cell_calc(x-1, y, FALSE);
 	}
@@ -1083,9 +1083,8 @@ void sometimes_fill_right_cell(int x, int y) {
 	unsigned char current_mass = get_cell_mass(x, y);
 	unsigned char right_mass = get_cell_mass(x+1, y);
 
-	if(right_mass < current_mass && get_cell_direction(x, y) != LEFT && current_mass >= MIN_MASS) {
+	if(right_mass < current_mass && get_cell_direction(x, y) && current_mass >= MIN_MASS) {
 		set_cell_mass(x, y, --current_mass);
-		set_cell_direction(x, y, RIGHT);
 		set_cell_mass(x+1, y, ++right_mass);
 		set_cell_calc(x+1, y, FALSE);
 	}
@@ -1131,6 +1130,14 @@ void fill_left_or_right_cell(int x, int y) {
 				sometimes_fill_left_cell(x, y);
 			}
 			break;
+		case NONE:
+			if((water_cell(x-1, y) || air_cell(x-1, y)) && left_cell_mass <= right_cell_mass) {
+				set_cell_direction(x, y, LEFT);
+			}
+			else if((water_cell(x+1, y) || air_cell(x+1, y)) && right_cell_mass <= left_cell_mass) {
+				set_cell_direction(x, y, RIGHT);
+			}
+			break;
 	}
 }
 
@@ -1143,28 +1150,22 @@ void update_cells(void) {
 			if((y > 0) && (x > 0) && (y+1 < map.h) && (x+1 < map.w)) {
 
 				/* flow down into bottom cell */
-				if(water_cell(x, y) && (water_cell(x, y+1) || air_cell(x, y+1)) && !(get_cell_mass(x, y+1) == MAX_MASS)) {
+				if(water_cell(x, y) && (water_cell(x, y+1) || air_cell(x, y+1)) && (get_cell_mass(x, y+1) < MAX_MASS)) {
 					if(get_cell_calc(x, y)) {
 						sometimes_fill_bottom_cell(x, y);
 					}
 				}
 
 				/* if direction flag is set and both neighbours are emtpy/not full, move into flow direction */
-				if(get_cell_mass(x, y) > 0 && water_cell(x, y) && !air_cell(x, y+1) && get_cell_calc(x, y)) {
-					fill_left_or_right_cell(x, y);
-				}
-
-				/* flow into left cell */
-				if(get_cell_mass(x, y) > 0 && water_cell(x, y) && (water_cell(x-1, y) || air_cell(x-1, y))) {
-					if(!(air_cell(x, y+1)) && get_cell_calc(x, y)) {
-						sometimes_fill_left_cell(x, y);
+				if(water_cell(x, y) && !air_cell(x, y+1) && get_cell_calc(x, y)) {
+					if((water_cell(x+1, y) || air_cell(x+1, y)) || (water_cell(x-1, y) || air_cell(x-1, y))) {
+						fill_left_or_right_cell(x, y);
 					}
 				}
 
-				/* flow into right cell */
-				if(get_cell_mass(x, y) > 0 && water_cell(x, y) && (water_cell(x+1, y) || air_cell(x+1, y))) {
-					if(!(air_cell(x, y+1)) && get_cell_calc(x, y)) {
-						sometimes_fill_right_cell(x, y);
+				if(sand_cell(x, y)) {
+					if(air_cell(x, y+1) || water_cell(x, y+1)) {
+						sometimes_fall_down(x, y);
 					}
 				}
 
@@ -1197,4 +1198,20 @@ void clear_grid(void) {
 		}
 	}
 }
+
+/* let sand fall down */
+void sometimes_fall_down(int x, int y) {
+	unsigned char current_mass = get_cell_mass(x, y);
+	unsigned char bottom_mass = get_cell_mass(x, y+1);
+	unsigned char current_type = get_cell_type(x, y);
+	unsigned char bottom_type = get_cell_type(x, y+1);
+
+	set_cell_mass(x, y, bottom_mass);
+	set_cell_type(x, y, bottom_type);
+	set_cell_mass(x, y+1, current_mass);
+	set_cell_type(x, y+1, current_type);
+	set_cell_calc(x, y, FALSE);
+	set_cell_calc(x, y+1, FALSE);
+}
+
 
